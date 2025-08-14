@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "143832335203",
+    "project_id": "madhabits-f0054",
+    "storage_bucket": "madhabits-f0054.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:143832335203:android:1f493f4a468ba0ec350956",
+        "android_client_info": {
+          "package_name": "com.madhabits.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "143832335203-kjku8071sstt0f9vierjavcqgfitsi3r.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTaharTPE_vE_tW-OTlAW_xwNyL6t0S10"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "143832335203-kjku8071sstt0f9vierjavcqgfitsi3r.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "143832335203-8totkl2bla3b0s3abndpcb4a1mu11fth.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.madhabits.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
