@@ -6,14 +6,17 @@ import {
   ScrollView,
   Switch,
   TouchableOpacity,
+  Alert,
 } from "react-native";
 import { Stack } from "expo-router";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useAuth } from "@/contexts/AuthContext";
 import { colors } from "@/constants/colors";
 import { Card } from "@/components/ui/Card";
 
 export default function SettingsScreen() {
   const { currency, notifications, updateSettings } = useSettingsStore();
+  const { user, signOut } = useAuth();
 
   const currencies = [
     { code: "USD", symbol: "$", name: "US Dollar" },
@@ -34,9 +37,42 @@ export default function SettingsScreen() {
     updateSettings({ notifications: !notifications });
   };
 
+  const handleSignOut = () => {
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: signOut,
+      },
+    ]);
+  };
+
   return (
     <ScrollView style={styles.container}>
       <Stack.Screen options={{ title: "Settings" }} />
+
+      {user && (
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>Account</Text>
+          <View style={styles.userInfo}>
+            <Text style={styles.userEmail}>{user.email}</Text>
+            <Text style={styles.userProvider}>
+              Signed in with {user.app_metadata?.provider || "Google"}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.signOutButton}
+            onPress={handleSignOut}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.signOutText}>Sign Out</Text>
+          </TouchableOpacity>
+        </Card>
+      )}
 
       <Card style={styles.section}>
         <Text style={styles.sectionTitle}>App Settings</Text>
@@ -165,5 +201,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     textAlign: "center",
+  },
+  userInfo: {
+    marginBottom: 16,
+  },
+  userEmail: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.text,
+    marginBottom: 4,
+  },
+  userProvider: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  signOutButton: {
+    backgroundColor: colors.error,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  signOutText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

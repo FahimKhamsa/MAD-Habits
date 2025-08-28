@@ -1,11 +1,12 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 
 import { ErrorBoundary } from "./error-boundary";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 export const unstable_settings = {
   // Ensure that reloading on `/modal` keeps a back button present.
@@ -15,42 +16,48 @@ export const unstable_settings = {
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    ...FontAwesome.font,
-  });
-
-  useEffect(() => {
-    if (error) {
-      console.error(error);
-      throw error;
-    }
-  }, [error]);
-
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
-
-  if (!loaded) {
-    return null;
-  }
-
-  return (
-    <ErrorBoundary>
-      <RootLayoutNav />
-    </ErrorBoundary>
-  );
-}
-
 function RootLayoutNav() {
+  const { user, loading } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    console.log("[RootLayoutNav] Auth state:", {
+      user: !!user,
+      loading,
+      pathname,
+    });
+
+    if (loading) {
+      console.log("[RootLayoutNav] Still loading, waiting...");
+      return;
+    }
+
+    const isAuthScreen = ["/login", "/signup", "/forgot-password"].includes(
+      pathname
+    );
+    console.log("[RootLayoutNav] Is auth screen:", isAuthScreen);
+
+    if (!user && !isAuthScreen) {
+      console.log("[RootLayoutNav] No user, redirecting to login");
+      router.replace("/login");
+    } else if (user && isAuthScreen) {
+      console.log("[RootLayoutNav] User authenticated, redirecting to tabs");
+      router.replace("/(tabs)");
+    } else {
+      console.log("[RootLayoutNav] No navigation needed");
+    }
+  }, [user, loading, pathname]);
+
   return (
     <Stack
       screenOptions={{
         headerBackTitle: "Back",
       }}
     >
+      <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="signup" options={{ headerShown: false }} />
+      <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
       <Stack.Screen
@@ -112,5 +119,36 @@ function RootLayoutNav() {
       />
       <Stack.Screen name="settings" options={{ title: "Settings" }} />
     </Stack>
+  );
+}
+
+export default function RootLayout() {
+  const [loaded, error] = useFonts({
+    ...FontAwesome.font,
+  });
+
+  useEffect(() => {
+    if (error) {
+      console.error(error);
+      throw error;
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (loaded) {
+      SplashScreen.hideAsync();
+    }
+  }, [loaded]);
+
+  if (!loaded) {
+    return null;
+  }
+
+  return (
+    <ErrorBoundary>
+      <AuthProvider>
+        <RootLayoutNav />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
