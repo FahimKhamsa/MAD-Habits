@@ -98,26 +98,54 @@ export const useBudgetStore = create<BudgetState>((set, get) => ({
     });
 
     if (userId) {
-      // Setup real-time subscriptions
+      // Setup real-time subscriptions with deduplication
       const categoriesSubscription = BudgetService.subscribeToCategories(
         userId,
-        (categories) => {
+        (newCategories) => {
           console.log(
             "[BudgetStore] Categories updated via subscription:",
-            categories.length
+            newCategories.length
           );
-          set({ categories });
+
+          set((state) => {
+            // Merge categories, avoiding duplicates and preserving optimistic updates
+            const existingIds = new Set(state.categories.map((c) => c.id));
+            const categoriesToAdd = newCategories.filter(
+              (c) => !existingIds.has(c.id)
+            );
+            const categoriesToUpdate = newCategories.filter((c) =>
+              existingIds.has(c.id)
+            );
+
+            // Update existing categories and add new ones
+            const updatedCategories = state.categories.map((existing) => {
+              const updated = categoriesToUpdate.find(
+                (c) => c.id === existing.id
+              );
+              return updated || existing;
+            });
+
+            // Add completely new categories
+            const finalCategories = [...updatedCategories, ...categoriesToAdd];
+
+            console.log("[BudgetStore] Categories merged successfully");
+            return { categories: finalCategories };
+          });
         }
       );
 
       const transactionsSubscription = BudgetService.subscribeToTransactions(
         userId,
-        (transactions) => {
+        (newTransactions) => {
           console.log(
             "[BudgetStore] Transactions updated via subscription:",
-            transactions.length
+            newTransactions.length
           );
-          set({ transactions });
+
+          // Since we're not doing optimistic updates for transactions,
+          // we can simply replace the entire array with the latest data from the database
+          set({ transactions: newTransactions });
+          console.log("[BudgetStore] Transactions updated from database");
         }
       );
 
@@ -282,13 +310,13 @@ export const useBudgetStore = create<BudgetState>((set, get) => ({
         throw new Error(`Failed to create transaction: ${result.error}`);
       }
 
-      // Optimistically update the UI
-      set((state) => ({
-        transactions: [result.data!, ...state.transactions],
-        transactionsLoading: false,
-      }));
+      // Don't do optimistic updates for transactions - let real-time subscriptions handle it
+      // This prevents duplicate transactions from appearing
+      set({ transactionsLoading: false });
 
-      console.log("[BudgetStore] Transaction added successfully");
+      console.log(
+        "[BudgetStore] Transaction added successfully - waiting for real-time update"
+      );
     } catch (error) {
       console.error("[BudgetStore] Failed to add transaction:", error);
       set({
