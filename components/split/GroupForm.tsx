@@ -1,83 +1,101 @@
-import React, { useState } from "react";
+import React, { useState } from 'react'
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-} from "react-native";
-import { useRouter } from "expo-router";
-import { Group, GroupMember } from "@/types";
-import { colors } from "@/constants/colors";
-import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
-import { useSplitStore } from "@/store/splitStore";
-import { Feather } from "@expo/vector-icons";
+} from 'react-native'
+import { useRouter } from 'expo-router'
+import { Group, GroupMember } from '@/types'
+import { colors } from '@/constants/colors'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
+import { useSplitStore } from '@/store/splitStore'
+import { supabase } from '@/lib/supabase'
+import { Feather } from '@expo/vector-icons'
 
 interface GroupFormProps {
-  group?: Group;
-  onComplete?: (groupId: string) => void;
+  group?: Group
+  onComplete?: (groupId: string) => void
 }
 
 export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
-  const router = useRouter();
-  const { addGroup, updateGroup, addMember, removeMember } = useSplitStore();
+  const router = useRouter()
+  const { addGroup, updateGroup, addMember, removeMember } = useSplitStore()
 
-  const [name, setName] = useState(group?.name || "");
-  const [members, setMembers] = useState<Omit<GroupMember, "id">[]>(
+  const [name, setName] = useState(group?.name || '')
+  const [members, setMembers] = useState<Omit<GroupMember, 'id'>[]>(
     group
       ? group.members.map(({ id, ...rest }) => rest)
-      : [{ name: "You", isCurrentUser: true }]
-  );
-  const [newMemberName, setNewMemberName] = useState("");
-  const [errors, setErrors] = useState<{ [key: string]: string }>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
+      : [{ name: 'You', isCurrentUser: true }]
+  )
+  const [newMemberName, setNewMemberName] = useState('')
+  const [errors, setErrors] = useState<{ [key: string]: string }>({})
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const validateForm = (): boolean => {
-    const newErrors: { [key: string]: string } = {};
+    const newErrors: { [key: string]: string } = {}
 
     if (!name.trim()) {
-      newErrors.name = "Group name is required";
+      newErrors.name = 'Group name is required'
     }
 
     if (members.length < 2) {
-      newErrors.members = "Add at least one more person to the group";
+      newErrors.members = 'Add at least one more person to the group'
     }
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
 
-  const handleSubmit = () => {
-    if (!validateForm()) return;
-
-    setIsSubmitting(true);
-
+  const handleSubmit = async () => {
+    if (!validateForm()) return
+    setIsSubmitting(true)
     try {
       if (group) {
-        // Update existing group
-        updateGroup(group.id, {
-          name,
-        });
-
-        // Handle members separately
-        // This is simplified; in a real app, you'd need to track which members were added/removed
+        // Update existing group (not implemented)
+        updateGroup(group.id, { name })
       } else {
-        // Add new group
-        const groupId = addGroup(name, members);
+        // 1. Create group in Supabase
+        const user = (await supabase.auth.getUser()).data.user
+        const { data: groupData, error: groupError } = await supabase
+          .from('groups')
+          .insert({ name, creator_id: user?.id })
+          .select()
+          .single()
+        if (groupError || !groupData)
+          throw groupError || new Error('Group creation failed')
+
+        // 2. Add members to group_members in Supabase
+        const membersToAdd = members.map((m) => ({
+          group_id: groupData.id,
+          name: m.name,
+          email: m.email || user?.email || '',
+          is_current_user: m.isCurrentUser,
+        }))
+        const { data: membersData, error: memberError } = await supabase
+          .from('group_members')
+          .insert(membersToAdd)
+          .select()
+        if (memberError || !membersData)
+          throw memberError || new Error('Member creation failed')
+
+        // 3. Add to local store
+        const groupId = addGroup(name, members)
 
         if (onComplete) {
-          onComplete(groupId);
+          onComplete(groupId)
         } else {
-          router.back();
+          router.back()
         }
       }
     } catch (error) {
-      console.error("Error saving group:", error);
+      console.error('Error saving group:', error)
     } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false)
     }
-  };
+  }
 
   const addNewMember = () => {
     if (newMemberName.trim()) {
@@ -86,35 +104,35 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
         addMember(group.id, {
           name: newMemberName,
           isCurrentUser: false,
-        });
+        })
       } else {
         // Add to local state for new group
-        setMembers([...members, { name: newMemberName, isCurrentUser: false }]);
+        setMembers([...members, { name: newMemberName, isCurrentUser: false }])
       }
-      setNewMemberName("");
+      setNewMemberName('')
     }
-  };
+  }
 
   const removeMemberByIndex = (index: number) => {
-    if (members[index].isCurrentUser) return; // Don't remove current user
+    if (members[index].isCurrentUser) return // Don't remove current user
 
     if (group) {
       // Remove from existing group
-      const memberId = group.members[index].id;
-      removeMember(group.id, memberId);
+      const memberId = group.members[index].id
+      removeMember(group.id, memberId)
     } else {
       // Remove from local state
-      setMembers(members.filter((_, i) => i !== index));
+      setMembers(members.filter((_, i) => i !== index))
     }
-  };
+  }
 
   return (
     <ScrollView style={styles.container}>
       <Input
-        label="Group Name"
+        label='Group Name'
         value={name}
         onChangeText={setName}
-        placeholder="e.g., Roommates"
+        placeholder='e.g., Roommates'
         error={errors.name}
       />
 
@@ -134,7 +152,7 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
               </Text>
             </View>
             <Text style={styles.memberName}>
-              {member.name} {member.isCurrentUser ? "(You)" : ""}
+              {member.name} {member.isCurrentUser ? '(You)' : ''}
             </Text>
             {!member.isCurrentUser && (
               <TouchableOpacity
@@ -142,7 +160,7 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
                 onPress={() => removeMemberByIndex(index)}
                 activeOpacity={0.7}
               >
-                <Feather name="x" size={16} color={colors.textSecondary} />
+                <Feather name='x' size={16} color={colors.textSecondary} />
               </TouchableOpacity>
             )}
           </View>
@@ -151,16 +169,16 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
 
       <View style={styles.addMemberContainer}>
         <Input
-          placeholder="Add member name"
+          placeholder='Add member name'
           value={newMemberName}
           onChangeText={setNewMemberName}
           containerStyle={styles.addMemberInput}
         />
         <Button
-          title="Add"
+          title='Add'
           onPress={addNewMember}
           disabled={!newMemberName.trim()}
-          size="small"
+          size='small'
         />
       </View>
 
@@ -168,34 +186,34 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
 
       <View style={styles.buttonContainer}>
         <Button
-          title="Cancel"
-          variant="outline"
+          title='Cancel'
+          variant='outline'
           onPress={() => router.back()}
           style={styles.button}
         />
         <Button
-          title={group ? "Update Group" : "Create Group"}
+          title={group ? 'Update Group' : 'Create Group'}
           onPress={handleSubmit}
           loading={isSubmitting}
           style={styles.button}
         />
       </View>
     </ScrollView>
-  );
-};
+  )
+}
 
 const getMemberColor = (index: number): string => {
   const colors = [
-    "#6366f1", // Indigo
-    "#f97316", // Orange
-    "#10b981", // Emerald
-    "#3b82f6", // Blue
-    "#f59e0b", // Amber
-    "#ef4444", // Red
-  ];
+    '#6366f1', // Indigo
+    '#f97316', // Orange
+    '#10b981', // Emerald
+    '#3b82f6', // Blue
+    '#f59e0b', // Amber
+    '#ef4444', // Red
+  ]
 
-  return colors[index % colors.length];
-};
+  return colors[index % colors.length]
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -204,7 +222,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: '500',
     color: colors.text,
     marginBottom: 8,
     marginTop: 8,
@@ -213,8 +231,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   memberItem: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
@@ -223,13 +241,13 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 12,
   },
   memberInitial: {
-    color: "white",
-    fontWeight: "600",
+    color: 'white',
+    fontWeight: '600',
     fontSize: 16,
   },
   memberName: {
@@ -241,8 +259,8 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   addMemberContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 16,
   },
   addMemberInput: {
@@ -257,8 +275,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   buttonContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginTop: 24,
     marginBottom: 40,
   },
@@ -266,6 +284,6 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: 4,
   },
-});
+})
 
-export default GroupForm;
+export default GroupForm
