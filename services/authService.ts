@@ -58,6 +58,24 @@ export class AuthService {
         throw error;
       }
 
+      // If signup successful and user exists, create profile and settings
+      if (data.user) {
+        console.log("[AuthService] Creating profile and settings for new user");
+        try {
+          await this.createCompleteUserProfile(data.user.id, email);
+          console.log(
+            "[AuthService] Profile and settings created successfully"
+          );
+        } catch (profileError) {
+          // Log the error but don't fail the signup process
+          console.error(
+            "[AuthService] Profile creation failed, but signup succeeded:",
+            profileError
+          );
+          // You might want to store this in a queue for retry later
+        }
+      }
+
       return { data, error: null };
     } catch (error) {
       console.error("[AuthService] Sign up error:", error);
@@ -103,6 +121,36 @@ export class AuthService {
 
       if (result.type === "success") {
         console.log("[AuthService] OAuth completed successfully");
+
+        // Check if this is a new user and create profile if needed
+        try {
+          // Get the current user after OAuth
+          const { user } = await this.getCurrentUser();
+          if (user) {
+            // Check if profile exists
+            const profileCheck = await this.checkUserProfile(user.id);
+            if (!profileCheck.exists) {
+              console.log(
+                "[AuthService] New Google user, creating profile and settings"
+              );
+              await this.createCompleteUserProfile(user.id, user.email || "");
+              console.log(
+                "[AuthService] Profile and settings created for Google user"
+              );
+            } else {
+              console.log(
+                "[AuthService] Existing Google user, profile already exists"
+              );
+            }
+          }
+        } catch (profileError) {
+          // Log the error but don't fail the OAuth process
+          console.error(
+            "[AuthService] Profile creation failed for Google user:",
+            profileError
+          );
+        }
+
         // The session should be automatically handled by Supabase
         return { data: result, error: null };
       } else if (result.type === "cancel") {
@@ -166,5 +214,115 @@ export class AuthService {
 
   static onAuthStateChange(callback: (event: string, session: any) => void) {
     return supabase.auth.onAuthStateChange(callback);
+  }
+
+  // Create user profile in profiles table
+  static async createUserProfile(userId: string, email: string) {
+    try {
+      console.log("[AuthService] Creating user profile for:", userId);
+
+      const { data, error } = await supabase.from("profiles").insert({
+        id: userId, // Same as auth.users.id
+        email: email,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      if (error) {
+        console.error("[AuthService] Profile creation error:", error);
+        throw error;
+      }
+
+      console.log("[AuthService] Profile created successfully:", data);
+      return { data, error: null };
+    } catch (error) {
+      console.error("[AuthService] Profile creation failed:", error);
+      return { data: null, error };
+    }
+  }
+
+  // Create user settings with defaults
+  static async createUserSettings(userId: string) {
+    try {
+      console.log("[AuthService] Creating user settings for:", userId);
+
+      const { data, error } = await supabase.from("user_settings").insert({
+        user_id: userId,
+        theme: "light",
+        currency: "BDT",
+        notifications: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      if (error) {
+        console.error("[AuthService] Settings creation error:", error);
+        throw error;
+      }
+
+      console.log("[AuthService] Settings created successfully:", data);
+      return { data, error: null };
+    } catch (error) {
+      console.error("[AuthService] Settings creation failed:", error);
+      return { data: null, error };
+    }
+  }
+
+  // Check if user profile exists
+  static async checkUserProfile(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", userId)
+        .single();
+
+      if (error && error.code !== "PGRST116") {
+        // PGRST116 is "not found" error
+        throw error;
+      }
+
+      return { exists: !!data, error: null };
+    } catch (error) {
+      console.error("[AuthService] Profile check failed:", error);
+      return { exists: false, error };
+    }
+  }
+
+  // Create complete user profile (profile + settings)
+  static async createCompleteUserProfile(userId: string, email: string) {
+    try {
+      console.log("[AuthService] Creating complete profile for:", userId);
+
+      // Create profile
+      const profileResult = await this.createUserProfile(userId, email);
+      if (profileResult.error) {
+        throw new Error(
+          `Profile creation failed: ${
+            profileResult.error instanceof Error
+              ? profileResult.error.message
+              : "Unknown error"
+          }`
+        );
+      }
+
+      // Create settings
+      const settingsResult = await this.createUserSettings(userId);
+      if (settingsResult.error) {
+        throw new Error(
+          `Settings creation failed: ${
+            settingsResult.error instanceof Error
+              ? settingsResult.error.message
+              : "Unknown error"
+          }`
+        );
+      }
+
+      console.log("[AuthService] Complete profile created successfully");
+      return { success: true, error: null };
+    } catch (error) {
+      console.error("[AuthService] Complete profile creation failed:", error);
+      return { success: false, error };
+    }
   }
 }
