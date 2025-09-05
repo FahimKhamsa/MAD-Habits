@@ -1,10 +1,11 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Group, GroupMember } from '@/types'
@@ -20,33 +21,157 @@ interface GroupFormProps {
   onComplete?: (groupId: string) => void
 }
 
+type MemberDraft = {
+  email: string
+  isCurrentUser?: boolean
+  name?: string // resolved from profiles
+  userId?: string // profiles.id / auth.users.id
+}
+
 export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
   const router = useRouter()
   const { addGroup, updateGroup, addMember, removeMember } = useSplitStore()
 
   const [name, setName] = useState(group?.name || '')
-  const [members, setMembers] = useState<Omit<GroupMember, 'id'>[]>(
+
+  // ★ Members now stored as emails; we’ll resolve name/userId from profiles
+  const [members, setMembers] = useState<MemberDraft[]>(
     group
-      ? group.members.map(({ id, ...rest }) => rest)
-      : [{ name: 'You', isCurrentUser: true }]
+      ? group.members.map((m) => ({
+          email: m.email ?? '',
+          isCurrentUser: m.isCurrentUser,
+          name: m.name,
+          // userId: ??? (not present in your GroupMember type)
+        }))
+      : [{ email: '', isCurrentUser: true }] // we’ll hydrate current user from Supabase below
   )
-  const [newMemberName, setNewMemberName] = useState('')
+
+  const [newMemberEmail, setNewMemberEmail] = useState('')
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // ★ Hydrate current user’s email/name from profiles
+  useEffect(() => {
+    ;(async () => {
+      if (group) return
+      const { data: auth } = await supabase.auth.getUser()
+      const uid = auth.user?.id
+      if (!uid) return
+
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('id, email, full_name')
+        .eq('id', uid)
+        .maybeSingle()
+      if (error || !profile) return
+
+      setMembers((prev) => {
+        const idx = prev.findIndex((m) => m.isCurrentUser)
+        if (idx === -1) {
+          return [
+            {
+              email: profile.email ?? '',
+              isCurrentUser: true,
+              name: profile.full_name ?? 'You',
+              userId: profile.id,
+            },
+            ...prev,
+          ]
+        }
+        const copy = [...prev]
+        copy[idx] = {
+          ...copy[idx],
+          email: profile.email ?? copy[idx].email,
+          name: profile.full_name ?? copy[idx].name ?? 'You',
+          userId: profile.id,
+        }
+        return copy
+      })
+    })()
+  }, [group])
+
   const validateForm = (): boolean => {
-    const newErrors: { [key: string]: string } = {}
+    const newErrors: Record<string, string> = {}
+    if (!name.trim()) newErrors.name = 'Group name is required'
 
-    if (!name.trim()) {
-      newErrors.name = 'Group name is required'
-    }
+    const count = members.length
+    if (count < 2) newErrors.members = 'Add at least one more member email'
 
-    if (members.length < 2) {
-      newErrors.members = 'Add at least one more person to the group'
-    }
+    // basic email check
+    members.forEach((m, i) => {
+      if (!m.email || !/^\S+@\S+\.\S+$/.test(m.email)) {
+        newErrors[`member_${i}`] = 'Enter a valid email'
+      }
+    })
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
+  }
+
+  // ★ Resolve a single email against profiles
+  const lookupProfileByEmail = async (email: string) => {
+    // normalize/trim
+    const value = email.trim().toLowerCase()
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, email, full_name')
+      .eq('email', value)
+      .maybeSingle()
+
+    console.log(data)
+
+    if (error) {
+      // Surface RLS or other failures
+      throw new Error(error.message || 'Profile lookup failed')
+    }
+    return data // null if not found
+  }
+
+  // ★ Add a member by email (must exist in profiles)
+  const addNewMember = async () => {
+    const email = newMemberEmail.trim().toLowerCase()
+    if (!email) return
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setErrors((e) => ({ ...e, addEmail: 'Enter a valid email' }))
+      return
+    }
+
+    try {
+      const profile = await lookupProfileByEmail(email)
+      if (!profile) {
+        Alert.alert('Not found', 'No user with this email exists.')
+        return
+      }
+
+      // Prevent duplicates
+      if (members.some((m) => m.email.toLowerCase() === email)) {
+        Alert.alert('Duplicate', 'This email is already in the list.')
+        return
+      }
+
+      setMembers((prev) => [
+        ...prev,
+        {
+          email: profile.email ?? email,
+          name: profile.full_name ?? email,
+          userId: profile.id,
+          isCurrentUser: false,
+        },
+      ])
+      setNewMemberEmail('')
+      setErrors((e) => {
+        const { addEmail, ...rest } = e
+        return rest
+      })
+    } catch (err) {
+      console.error('lookup error', err)
+      Alert.alert('Error', 'Could not verify user email. Try again.')
+    }
+  }
+
+  const removeMemberByIndex = (index: number) => {
+    if (members[index]?.isCurrentUser) return // Don’t remove current user
+    setMembers((prev) => prev.filter((_, i) => i !== index))
   }
 
   const handleSubmit = async () => {
@@ -54,75 +179,78 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
     setIsSubmitting(true)
     try {
       if (group) {
-        // Update existing group (not implemented)
+        // Update name locally for existing group
         updateGroup(group.id, { name })
+        // You could also update Supabase groups.name here if you want:
+        // await supabase.from('groups').update({ name }).eq('id', <supa_group_id>)
       } else {
-        // 1. Create group in Supabase
-        const user = (await supabase.auth.getUser()).data.user
-        const { data: groupData, error: groupError } = await supabase
+        // 1) Create group in Supabase
+        const { data: auth } = await supabase.auth.getUser()
+        const creatorId = auth.user?.id ?? null
+        const { data: groupRow, error: groupErr } = await supabase
           .from('groups')
-          .insert({ name, creator_id: user?.id })
-          .select()
+          .insert({ name, creator_id: creatorId })
+          .select('id')
           .single()
-        if (groupError || !groupData)
-          throw groupError || new Error('Group creation failed')
+        if (groupErr || !groupRow)
+          throw groupErr || new Error('Group creation failed')
 
-        // 2. Add members to group_members in Supabase
-        const membersToAdd = members.map((m) => ({
-          group_id: groupData.id,
-          name: m.name,
-          email: m.email || user?.email || '',
-          is_current_user: m.isCurrentUser,
-        }))
-        const { data: membersData, error: memberError } = await supabase
-          .from('group_members')
-          .insert(membersToAdd)
-          .select()
-        if (memberError || !membersData)
-          throw memberError || new Error('Member creation failed')
-
-        // 3. Add to local store
-        const groupId = addGroup(name, members)
-
-        if (onComplete) {
-          onComplete(groupId)
-        } else {
-          router.back()
+        // 2) All members must exist in profiles (we already checked per-add, but re-validate here)
+        //    Also fill in display names
+        const resolvedMembers: MemberDraft[] = []
+        for (const m of members) {
+          // re-lookup if userId missing (e.g., someone typed current-user email manually)
+          let userId = m.userId
+          let dispName = m.name
+          if (!userId) {
+            const profile = await lookupProfileByEmail(m.email.toLowerCase())
+            if (!profile) {
+              throw new Error(`No user with email ${m.email}`)
+            }
+            userId = profile.id
+            dispName = dispName ?? profile.full_name ?? m.email
+          }
+          resolvedMembers.push({
+            email: m.email,
+            isCurrentUser: !!m.isCurrentUser,
+            name: dispName ?? m.email,
+            userId,
+          })
         }
+
+        // 3) Insert group_members
+        const supaMembersPayload = resolvedMembers.map((m) => ({
+          group_id: groupRow.id,
+          name: m.name ?? m.email,
+          email: m.email,
+          is_current_user: m.isCurrentUser ?? false,
+          user_id: m.userId, // ★ requires migration. If you DID NOT add the column, remove this line.
+        }))
+
+        const { error: gmErr } = await supabase
+          .from('group_members')
+          .insert(supaMembersPayload)
+        if (gmErr) throw gmErr
+
+        // 4) Add to local store (keeps your UI in sync)
+        //    We must map back to your local GroupMember shape (needs name)
+        const localMembers = resolvedMembers.map((m) => ({
+          name: m.name ?? m.email,
+          email: m.email,
+          isCurrentUser: !!m.isCurrentUser,
+        }))
+        const localGroupId = addGroup(name, localMembers)
+
+        onComplete ? onComplete(localGroupId) : router.back()
       }
     } catch (error) {
       console.error('Error saving group:', error)
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'Failed to create group'
+      )
     } finally {
       setIsSubmitting(false)
-    }
-  }
-
-  const addNewMember = () => {
-    if (newMemberName.trim()) {
-      if (group) {
-        // Add to existing group
-        addMember(group.id, {
-          name: newMemberName,
-          isCurrentUser: false,
-        })
-      } else {
-        // Add to local state for new group
-        setMembers([...members, { name: newMemberName, isCurrentUser: false }])
-      }
-      setNewMemberName('')
-    }
-  }
-
-  const removeMemberByIndex = (index: number) => {
-    if (members[index].isCurrentUser) return // Don't remove current user
-
-    if (group) {
-      // Remove from existing group
-      const memberId = group.members[index].id
-      removeMember(group.id, memberId)
-    } else {
-      // Remove from local state
-      setMembers(members.filter((_, i) => i !== index))
     }
   }
 
@@ -148,12 +276,23 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
               ]}
             >
               <Text style={styles.memberInitial}>
-                {member.name.charAt(0).toUpperCase()}
+                {(member.name ?? member.email ?? '?').charAt(0).toUpperCase()}
               </Text>
             </View>
-            <Text style={styles.memberName}>
-              {member.name} {member.isCurrentUser ? '(You)' : ''}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.memberName}>
+                {member.name ?? member.email}{' '}
+                {member.isCurrentUser ? '(You)' : ''}
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                {member.email}
+              </Text>
+              {errors[`member_${index}`] ? (
+                <Text style={[styles.errorText, { marginTop: 4 }]}>
+                  {errors[`member_${index}`]}
+                </Text>
+              ) : null}
+            </View>
             {!member.isCurrentUser && (
               <TouchableOpacity
                 style={styles.removeMemberButton}
@@ -169,15 +308,24 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
 
       <View style={styles.addMemberContainer}>
         <Input
-          placeholder='Add member name'
-          value={newMemberName}
-          onChangeText={setNewMemberName}
+          placeholder='Add member email'
+          value={newMemberEmail}
+          onChangeText={(t) => {
+            setNewMemberEmail(t)
+            if (errors.addEmail)
+              setErrors((e) => {
+                const { addEmail, ...rest } = e
+                return rest
+              })
+          }}
           containerStyle={styles.addMemberInput}
+          keyboardType='email-address'
+          autoCapitalize='none'
         />
         <Button
           title='Add'
           onPress={addNewMember}
-          disabled={!newMemberName.trim()}
+          disabled={!newMemberEmail.trim()}
           size='small'
         />
       </View>
@@ -203,23 +351,19 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
 }
 
 const getMemberColor = (index: number): string => {
-  const colors = [
-    '#6366f1', // Indigo
-    '#f97316', // Orange
-    '#10b981', // Emerald
-    '#3b82f6', // Blue
-    '#f59e0b', // Amber
-    '#ef4444', // Red
+  const colorsArr = [
+    '#6366f1',
+    '#f97316',
+    '#10b981',
+    '#3b82f6',
+    '#f59e0b',
+    '#ef4444',
   ]
-
-  return colors[index % colors.length]
+  return colorsArr[index % colorsArr.length]
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-  },
+  container: { flex: 1, padding: 16 },
   label: {
     fontSize: 14,
     fontWeight: '500',
@@ -227,9 +371,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 8,
   },
-  membersContainer: {
-    marginBottom: 16,
-  },
+  membersContainer: { marginBottom: 16 },
   memberItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -245,29 +387,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
   },
-  memberInitial: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  memberName: {
-    flex: 1,
-    fontSize: 16,
-    color: colors.text,
-  },
-  removeMemberButton: {
-    padding: 8,
-  },
+  memberInitial: { color: 'white', fontWeight: '600', fontSize: 16 },
+  memberName: { flex: 1, fontSize: 16, color: colors.text },
+  removeMemberButton: { padding: 8 },
   addMemberContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
   },
-  addMemberInput: {
-    flex: 1,
-    marginRight: 8,
-    marginBottom: 0,
-  },
+  addMemberInput: { flex: 1, marginRight: 8, marginBottom: 0 },
   errorText: {
     color: colors.error,
     fontSize: 12,
@@ -280,10 +408,7 @@ const styles = StyleSheet.create({
     marginTop: 24,
     marginBottom: 40,
   },
-  button: {
-    flex: 1,
-    marginHorizontal: 4,
-  },
+  button: { flex: 1, marginHorizontal: 4 },
 })
 
 export default GroupForm
