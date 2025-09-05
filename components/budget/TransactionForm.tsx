@@ -26,7 +26,13 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   onComplete,
 }) => {
   const router = useRouter();
-  const { addTransaction, updateTransaction, categories } = useBudgetStore();
+  const {
+    addTransaction,
+    updateTransaction,
+    categories,
+    transactionsLoading,
+    error,
+  } = useBudgetStore();
   const { currency } = useSettingsStore();
 
   const [description, setDescription] = useState(
@@ -68,7 +74,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
@@ -76,7 +82,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
     try {
       if (transaction) {
         // Update existing transaction
-        updateTransaction(transaction.id, {
+        await updateTransaction(transaction.id, {
           description,
           amount: Number(amount),
           categoryId,
@@ -85,7 +91,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
         });
       } else {
         // Add new transaction
-        addTransaction({
+        await addTransaction({
           description,
           amount: Number(amount),
           categoryId,
@@ -101,6 +107,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       }
     } catch (error) {
       console.error("Error saving transaction:", error);
+      // Error is already handled by the store and displayed via the error state
     } finally {
       setIsSubmitting(false);
     }

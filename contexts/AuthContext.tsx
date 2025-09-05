@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { AuthService } from "@/services/authService";
+import { useBudgetStore } from "@/store/budgetStore";
 
 interface AuthContextType {
   user: User | null;
@@ -46,6 +47,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Sync budget store with authentication state
+  useEffect(() => {
+    const setUserId = useBudgetStore.getState().setUserId;
+    const cleanup = useBudgetStore.getState().cleanup;
+
+    if (user?.id) {
+      console.log("[AuthContext] Setting budget store user ID:", user.id);
+      setUserId(user.id);
+    } else {
+      console.log("[AuthContext] Cleaning up budget store");
+      cleanup();
+    }
+  }, [user]);
 
   const signInWithEmail = async (email: string, password: string) => {
     setLoading(true);

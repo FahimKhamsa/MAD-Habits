@@ -18,7 +18,8 @@ export const CategoryForm: React.FC<CategoryFormProps> = ({
   onComplete,
 }) => {
   const router = useRouter();
-  const { addCategory, updateCategory } = useBudgetStore();
+  const { addCategory, updateCategory, categoriesLoading, error } =
+    useBudgetStore();
   const { currency } = useSettingsStore();
 
   const [name, setName] = useState(category?.name || "");
@@ -43,7 +44,7 @@ export const CategoryForm: React.FC<CategoryFormProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
@@ -51,13 +52,13 @@ export const CategoryForm: React.FC<CategoryFormProps> = ({
     try {
       if (category) {
         // Update existing category
-        updateCategory(category.id, {
+        await updateCategory(category.id, {
           name,
           limit: Number(limit),
         });
       } else {
         // Add new category
-        addCategory({
+        await addCategory({
           name,
           limit: Number(limit),
         });
@@ -70,6 +71,7 @@ export const CategoryForm: React.FC<CategoryFormProps> = ({
       }
     } catch (error) {
       console.error("Error saving category:", error);
+      // Error is already handled by the store and displayed via the error state
     } finally {
       setIsSubmitting(false);
     }
