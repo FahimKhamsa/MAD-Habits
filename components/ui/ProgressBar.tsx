@@ -8,6 +8,7 @@ interface ProgressBarProps {
   backgroundColor?: string;
   progressColor?: string;
   style?: ViewStyle;
+  color?: string;
   animated?: boolean;
 }
 

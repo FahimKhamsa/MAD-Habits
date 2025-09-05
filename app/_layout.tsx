@@ -7,6 +7,7 @@ import { Platform } from "react-native";
 
 import { ErrorBoundary } from "./error-boundary";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { useHabits } from "@/hooks/useHabits";
 
 export const unstable_settings = {
   // Ensure that reloading on `/modal` keeps a back button present.
@@ -126,6 +127,15 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     ...FontAwesome.font,
   });
+
+  const { isAuthenticated, fetchHabits, isOnline } = useHabits();
+
+  useEffect(() => {
+    // Fetch habits when user is authenticated and online
+    if (isAuthenticated && isOnline) {
+      fetchHabits().catch(console.error);
+    }
+  }, [isAuthenticated, isOnline]);
 
   useEffect(() => {
     if (error) {

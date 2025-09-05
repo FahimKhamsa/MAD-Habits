@@ -1,23 +1,48 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { Habit } from "@/types";
 import { colors } from "@/constants/colors";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { useHabitStore } from "@/store/habitStore";
+import { useHabits } from "@/hooks/useHabits";
 
 interface HabitFormProps {
   habit?: Habit;
   onComplete?: () => void;
 }
 
+// Common habit icons
+const HABIT_ICONS = [
+  '🎯', '💪', '📚', '🏃‍♀️', '🧘‍♀️', '💧', '🍎', '🌅', '✍️', '🎵',
+  '🏋️‍♂️', '🚶‍♂️', '🛏️', '🧠', '📖', '🎨', '🎸', '📱', '💻', '🌱',
+  '🏊‍♂️', '🚴‍♂️', '🧘‍♂️', '📝', '🥗', '☕', '🌙', '⏰', '🎲', '🎪'
+];
+
+// Common habit colors
+const HABIT_COLORS = [
+  '#3B82F6', // Blue
+  '#EF4444', // Red
+  '#10B981', // Green
+  '#F59E0B', // Amber
+  '#8B5CF6', // Purple
+  '#EC4899', // Pink
+  '#06B6D4', // Cyan
+  '#84CC16', // Lime
+  '#F97316', // Orange
+  '#6B7280', // Gray
+  '#DC2626', // Red 600
+  '#059669', // Green 600
+];
+
 export const HabitForm: React.FC<HabitFormProps> = ({ habit, onComplete }) => {
   const router = useRouter();
-  const { addHabit, updateHabit } = useHabitStore();
+  const { addHabit, updateHabit, isLoading } = useHabits();
 
   const [name, setName] = useState(habit?.name || "");
   const [description, setDescription] = useState(habit?.description || "");
+  const [icon, setIcon] = useState(habit?.icon || "🎯");
+  const [color, setColor] = useState(habit?.color || "#3B82F6");
   const [frequency, setFrequency] = useState<"daily" | "weekly" | "monthly">(
     habit?.frequency || "daily"
   );
@@ -42,28 +67,27 @@ export const HabitForm: React.FC<HabitFormProps> = ({ habit, onComplete }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validateForm()) return;
 
     setIsSubmitting(true);
 
     try {
+      const habitData = {
+        name,
+        description,
+        icon,
+        color,
+        frequency,
+        daysOfWeek: frequency === "weekly" ? daysOfWeek : undefined,
+      };
+
       if (habit) {
         // Update existing habit
-        updateHabit(habit.id, {
-          name,
-          description,
-          frequency,
-          daysOfWeek: frequency === "weekly" ? daysOfWeek : undefined,
-        });
+        await updateHabit(habit.id, habitData);
       } else {
         // Add new habit
-        addHabit({
-          name,
-          description,
-          frequency,
-          daysOfWeek: frequency === "weekly" ? daysOfWeek : undefined,
-        });
+        await addHabit(habitData);
       }
 
       if (onComplete) {
@@ -73,6 +97,7 @@ export const HabitForm: React.FC<HabitFormProps> = ({ habit, onComplete }) => {
       }
     } catch (error) {
       console.error("Error saving habit:", error);
+      Alert.alert("Error", "Failed to save habit. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -115,6 +140,58 @@ export const HabitForm: React.FC<HabitFormProps> = ({ habit, onComplete }) => {
         numberOfLines={3}
         textAlignVertical="top"
       />
+
+      {/* Icon Selection */}
+      <View style={styles.section}>
+        <Text style={styles.label}>Icon</Text>
+        <View style={styles.iconGrid}>
+          {HABIT_ICONS.map((iconOption) => (
+            <TouchableOpacity
+              key={iconOption}
+              style={[
+                styles.iconButton,
+                icon === iconOption && styles.iconButtonSelected,
+                { borderColor: icon === iconOption ? color : colors.borderLight }
+              ]}
+              onPress={() => setIcon(iconOption)}
+            >
+              <Text style={styles.iconText}>{iconOption}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Color Selection */}
+      <View style={styles.section}>
+        <Text style={styles.label}>Color</Text>
+        <View style={styles.colorGrid}>
+          {HABIT_COLORS.map((colorOption) => (
+            <TouchableOpacity
+              key={colorOption}
+              style={[
+                styles.colorButton,
+                { backgroundColor: colorOption },
+                color === colorOption && styles.colorButtonSelected,
+              ]}
+              onPress={() => setColor(colorOption)}
+            />
+          ))}
+        </View>
+      </View>
+
+      {/* Preview */}
+      <View style={styles.section}>
+        <Text style={styles.label}>Preview</Text>
+        <View style={[styles.previewCard, { borderColor: color }]}>
+          <View style={styles.previewHeader}>
+            <Text style={styles.previewIcon}>{icon}</Text>
+            <Text style={styles.previewName}>{name || "Habit Name"}</Text>
+          </View>
+          {description && (
+            <Text style={styles.previewDescription}>{description}</Text>
+          )}
+        </View>
+      </View>
 
       <Text style={styles.label}>Frequency</Text>
       <View style={styles.frequencyButtons}>
@@ -169,7 +246,7 @@ export const HabitForm: React.FC<HabitFormProps> = ({ habit, onComplete }) => {
         <Button
           title={habit ? "Update Habit" : "Create Habit"}
           onPress={handleSubmit}
-          loading={isSubmitting}
+          loading={isSubmitting || isLoading}
           style={styles.button}
         />
       </View>
@@ -182,11 +259,74 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
+  section: {
+    marginBottom: 20,
+  },
   label: {
     fontSize: 14,
     fontWeight: "500",
     color: colors.text,
     marginBottom: 8,
+  },
+  iconGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  iconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: colors.borderLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  iconButtonSelected: {
+    borderWidth: 3,
+  },
+  iconText: {
+    fontSize: 24,
+  },
+  colorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  colorButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: 'transparent',
+  },
+  colorButtonSelected: {
+    borderColor: colors.text,
+  },
+  previewCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    backgroundColor: colors.background,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  previewIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  previewName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  previewDescription: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 8,
   },
   frequencyButtons: {
     flexDirection: "row",

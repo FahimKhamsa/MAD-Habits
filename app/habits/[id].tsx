@@ -5,10 +5,11 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { useHabitStore } from "@/store/habitStore";
+import { useHabits } from "@/hooks/useHabits";
 import { colors } from "@/constants/colors";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -18,9 +19,29 @@ import { formatDate } from "@/utils/helpers";
 export default function HabitDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { getHabitById, deleteHabit, toggleHabitCompletion } = useHabitStore();
+  const { 
+    getHabitById, 
+    deleteHabit, 
+    toggleHabitCompletion, 
+    isLoading, 
+    isOnline,
+    isAuthenticated 
+  } = useHabits();
 
   const habit = getHabitById(id);
+
+  if (!isAuthenticated) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Please sign in to view your habits</Text>
+        <Button
+          title="Go Back"
+          onPress={() => router.back()}
+          style={styles.errorButton}
+        />
+      </View>
+    );
+  }
 
   if (!habit) {
     return (
@@ -40,12 +61,38 @@ export default function HabitDetailScreen() {
   };
 
   const handleDelete = () => {
-    deleteHabit(id);
-    router.back();
+    Alert.alert(
+      "Delete Habit",
+      `Are you sure you want to delete "${habit.name}"? This action cannot be undone.`,
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteHabit(id);
+              router.back();
+            } catch (error) {
+              Alert.alert("Error", "Failed to delete habit. Please try again.");
+              console.error("Error deleting habit:", error);
+            }
+          },
+        },
+      ]
+    );
   };
 
-  const handleToggleCompletion = (date: string) => {
-    toggleHabitCompletion(id, date);
+  const handleToggleCompletion = async (date: string) => {
+    try {
+      await toggleHabitCompletion(id, date);
+    } catch (error) {
+      Alert.alert("Error", "Failed to update habit completion. Please try again.");
+      console.error("Error toggling completion:", error);
+    }
   };
 
   // Get last 7 days for history
@@ -67,9 +114,16 @@ export default function HabitDetailScreen() {
         options={{
           title: habit.name,
           headerRight: () => (
-            <TouchableOpacity onPress={handleEdit} style={styles.editButton}>
-              <Feather name="edit" size={20} color={colors.primary} />
-            </TouchableOpacity>
+            <View style={styles.headerButtons}>
+              {!isOnline && (
+                <View style={styles.offlineIndicator}>
+                  <Feather name="wifi-off" size={16} color={colors.textSecondary} />
+                </View>
+              )}
+              <TouchableOpacity onPress={handleEdit} style={styles.editButton}>
+                <Feather name="edit" size={20} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
           ),
         }}
       />
@@ -118,6 +172,13 @@ export default function HabitDetailScreen() {
             <Text style={styles.metaLabel}>Created</Text>
             <Text style={styles.metaValue}>{formatDate(habit.createdAt)}</Text>
           </View>
+
+          <View style={styles.metaItem}>
+            <Text style={styles.metaLabel}>Status</Text>
+            <Text style={[styles.metaValue, { color: isOnline ? colors.success : colors.textSecondary }]}>
+              {isOnline ? "Synced" : "Offline"}
+            </Text>
+          </View>
         </View>
       </Card>
 
@@ -164,18 +225,24 @@ export default function HabitDetailScreen() {
                 style={styles.historyItem}
                 onPress={() => handleToggleCompletion(date)}
                 activeOpacity={0.7}
+                disabled={isLoading}
               >
                 <Text style={styles.historyDate}>
                   {formatDate(date, "short")}
                 </Text>
-                <View
-                  style={[
-                    styles.historyStatus,
-                    isCompleted
-                      ? styles.historyCompleted
-                      : styles.historyIncomplete,
-                  ]}
-                />
+                <View style={styles.historyStatusContainer}>
+                  {isLoading && (
+                    <Text style={styles.loadingText}>...</Text>
+                  )}
+                  <View
+                    style={[
+                      styles.historyStatus,
+                      isCompleted
+                        ? styles.historyCompleted
+                        : styles.historyIncomplete,
+                    ]}
+                  />
+                </View>
               </TouchableOpacity>
             );
           })}
@@ -190,6 +257,7 @@ export default function HabitDetailScreen() {
           style={styles.deleteButton}
           textStyle={{ color: colors.error }}
           icon={<Feather name="trash-2" size={16} color={colors.error} />}
+          loading={isLoading}
         />
       </View>
     </ScrollView>
@@ -200,6 +268,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  offlineIndicator: {
+    marginRight: 8,
+    padding: 4,
   },
   editButton: {
     padding: 8,
@@ -294,6 +370,15 @@ const styles = StyleSheet.create({
   historyDate: {
     fontSize: 16,
     color: colors.text,
+  },
+  historyStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginRight: 8,
   },
   historyStatus: {
     width: 24,

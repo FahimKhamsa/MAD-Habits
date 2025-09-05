@@ -6,7 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
 } from "react-native";
-import { useHabitStore } from "@/store/habitStore";
+import { useHabits } from "@/hooks/useHabits";
 import { useBudgetStore } from "@/store/budgetStore";
 import { colors } from "@/constants/colors";
 import { Card } from "@/components/ui/Card";
@@ -17,7 +17,7 @@ type StatTab = "habits" | "budget" | "split";
 
 export default function StatsScreen() {
   const [activeTab, setActiveTab] = useState<StatTab>("habits");
-  const { habits } = useHabitStore();
+  const { habits } = useHabits();
   const { categories, transactions } = useBudgetStore();
   const { currency } = useSettingsStore();
 

@@ -27,23 +27,30 @@ export const HabitCard: React.FC<HabitCardProps> = ({
 
   return (
     <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
-      <Card style={styles.card}>
+      <Card style={StyleSheet.flatten([styles.card, { borderLeftColor: habit.color, borderLeftWidth: 4 }])}>
         <View style={styles.header}>
           <View style={styles.titleContainer}>
-            <Text style={styles.title}>{habit.name}</Text>
-            <Text style={styles.subtitle}>
-              {habit.frequency === "daily"
-                ? "Daily"
-                : habit.frequency === "weekly"
-                ? "Weekly"
-                : "Monthly"}
-            </Text>
+            <View style={styles.titleRow}>
+              <View style={[styles.iconContainer, { backgroundColor: `${habit.color}20` }]}>
+                <Text style={styles.habitIcon}>{habit.icon}</Text>
+              </View>
+              <View style={styles.titleTextContainer}>
+                <Text style={styles.title}>{habit.name}</Text>
+                <Text style={styles.subtitle}>
+                  {habit.frequency === "daily"
+                    ? "Daily"
+                    : habit.frequency === "weekly"
+                    ? "Weekly"
+                    : "Monthly"}
+                </Text>
+              </View>
+            </View>
           </View>
           <TouchableOpacity
             style={[
               styles.checkButton,
               isCompleted
-                ? styles.checkButtonCompleted
+                ? { backgroundColor: habit.color }
                 : styles.checkButtonIncomplete,
             ]}
             onPress={handleToggle}
@@ -57,14 +64,26 @@ export const HabitCard: React.FC<HabitCardProps> = ({
           </TouchableOpacity>
         </View>
 
+        {habit.description && (
+          <Text style={styles.description} numberOfLines={2}>
+            {habit.description}
+          </Text>
+        )}
+
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <Text style={styles.statLabel}>Current Streak</Text>
-            <Text style={styles.statValue}>{habit.streak} days</Text>
+            <Text style={[styles.statValue, { color: habit.color }]}>
+              {habit.streak} days
+            </Text>
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statLabel}>Best Streak</Text>
             <Text style={styles.statValue}>{habit.bestStreak} days</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Total</Text>
+            <Text style={styles.statValue}>{habit.completedDates.length}</Text>
           </View>
         </View>
 
@@ -76,6 +95,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
                 : 0
             }
             height={6}
+            color={habit.color}
           />
         </View>
       </Card>
@@ -97,6 +117,24 @@ const styles = StyleSheet.create({
   titleContainer: {
     flex: 1,
   },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  habitIcon: {
+    fontSize: 24,
+  },
+  titleTextContainer: {
+    flex: 1,
+  },
   title: {
     fontSize: 18,
     fontWeight: "600",
@@ -107,6 +145,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
   },
+  description: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
   checkButton: {
     width: 40,
     height: 40,
@@ -115,18 +159,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginLeft: 12,
   },
-  checkButtonCompleted: {
-    backgroundColor: colors.success,
-  },
   checkButtonIncomplete: {
     backgroundColor: colors.borderLight,
   },
   statsContainer: {
     flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 12,
   },
   statItem: {
-    marginRight: 24,
+    alignItems: "center",
+    flex: 1,
   },
   statLabel: {
     fontSize: 12,

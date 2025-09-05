@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { useHabitStore } from "@/store/habitStore";
+import { useHabits } from "@/hooks/useHabits";
 import { colors } from "@/constants/colors";
 import { HabitCard } from "@/components/habits/HabitCard";
 import { Button } from "@/components/ui/Button";
@@ -21,7 +21,7 @@ export default function HabitsScreen() {
     getHabitsForDate,
     getHabitCompletionsForDate,
     toggleHabitCompletion,
-  } = useHabitStore();
+  } = useHabits();
   const [selectedDate, setSelectedDate] = useState(getTodayISO());
 
   const habitsForDate = getHabitsForDate(selectedDate);

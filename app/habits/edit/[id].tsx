@@ -1,12 +1,12 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
 import { useLocalSearchParams, Stack } from "expo-router";
-import { useHabitStore } from "@/store/habitStore";
+import { useHabits } from "@/hooks/useHabits";
 import { HabitForm } from "@/components/habits/HabitForm";
 
 export default function EditHabitScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getHabitById } = useHabitStore();
+  const { getHabitById } = useHabits();
 
   const habit = getHabitById(id);
 
