@@ -110,15 +110,12 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
   const lookupProfileByEmail = async (email: string) => {
     // normalize/trim
     const value = email.trim().toLowerCase()
-    console.log('Looking up profile for email:', value)
 
     const { data, error } = await supabase
       .from('profiles')
       .select('id, email, full_name')
       .eq('email', value)
       .maybeSingle()
-
-    console.log('Profile lookup result:', { data, error })
 
     if (error) {
       // Surface RLS or other failures
@@ -130,25 +127,19 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
 
   // ★ Add a member by email (must exist in profiles)
   const addNewMember = async () => {
-    console.log('Add button pressed!')
     const email = newMemberEmail.trim().toLowerCase()
-    console.log('Email to add:', email)
 
     if (!email) {
-      console.log('No email provided')
       return
     }
 
     if (!/^\S+@\S+\.\S+$/.test(email)) {
-      console.log('Invalid email format')
       setErrors((e) => ({ ...e, addEmail: 'Enter a valid email' }))
       return
     }
 
     try {
-      console.log('Looking up profile for email:', email)
       const profile = await lookupProfileByEmail(email)
-      console.log('Profile found:', profile)
 
       if (!profile) {
         Alert.alert('Not found', 'No user with this email exists.')
@@ -161,7 +152,6 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
         return
       }
 
-      console.log('Adding member to list')
       setMembers((prev) => [
         ...prev,
         {
@@ -176,7 +166,6 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
         const { addEmail, ...rest } = e
         return rest
       })
-      console.log('Member added successfully')
     } catch (err) {
       console.error('lookup error', err)
       Alert.alert('Error', 'Could not verify user email. Try again.')
@@ -333,13 +322,9 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
         />
         <Button
           title='Add'
-          onPress={() => {
-            console.log('Button onPress called!')
-            addNewMember()
-          }}
+          onPress={addNewMember}
           disabled={!newMemberEmail.trim()}
           size='small'
-          haptic={false}
         />
       </View>
 

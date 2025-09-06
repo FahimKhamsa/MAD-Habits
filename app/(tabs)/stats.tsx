@@ -62,7 +62,6 @@ export default function StatsScreen() {
   })
 
   const handleLogout = () => {
-    console.log('Logout button pressed!')
     Alert.alert('Logout', 'Are you sure you want to logout?', [
       {
         text: 'Cancel',
@@ -72,11 +71,8 @@ export default function StatsScreen() {
         text: 'Logout',
         style: 'destructive',
         onPress: async () => {
-          console.log('User confirmed logout')
           try {
-            console.log('Calling signOut...')
             await signOut()
-            console.log('SignOut successful, navigating to login')
             router.replace('/login')
           } catch (error) {
             console.error('Logout error:', error)
@@ -99,10 +95,7 @@ export default function StatsScreen() {
           </View>
           <TouchableOpacity
             style={styles.logoutButton}
-            onPress={() => {
-              console.log('Logout TouchableOpacity pressed!')
-              handleLogout()
-            }}
+            onPress={handleLogout}
             activeOpacity={0.7}
           >
             <Feather name='log-out' size={20} color={colors.error} />

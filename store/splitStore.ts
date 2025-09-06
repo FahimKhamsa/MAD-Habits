@@ -7,6 +7,7 @@ import {
   deleteGroupRemote,
   deleteExpenseRemote,
   createGroupRemote,
+  loadUserGroups,
 } from '@/services/splitSync'
 
 interface SplitState {
@@ -30,6 +31,7 @@ interface SplitState {
   getGroupById: (id: string) => Group | undefined
   getExpensesByGroup: (groupId: string) => SharedExpense[]
   getBalances: (groupId: string) => { [memberId: string]: number }
+  loadGroupsFromDatabase: () => Promise<void>
 }
 
 export const useSplitStore = create<SplitState>()(
@@ -67,6 +69,7 @@ export const useSplitStore = create<SplitState>()(
               name: m.name,
               email: m.email || '',
               isCurrentUser: m.isCurrentUser,
+              userId: m.userId,
             }))
           )
         } catch (error) {
@@ -259,6 +262,16 @@ export const useSplitStore = create<SplitState>()(
         })
 
         return balances
+      },
+
+      loadGroupsFromDatabase: async () => {
+        try {
+          const dbGroups = await loadUserGroups()
+          set({ groups: dbGroups })
+        } catch (error) {
+          console.error('Failed to load groups from database:', error)
+          // Keep existing groups in case of error
+        }
       },
     }),
     {
