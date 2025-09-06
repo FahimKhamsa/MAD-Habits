@@ -1,72 +1,74 @@
-import React from 'react'
+import React from "react";
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-} from 'react-native'
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router'
-import { Feather } from '@expo/vector-icons'
-import { useSplitStore } from '@/store/splitStore'
-import { colors } from '@/constants/colors'
-import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
-import { ExpenseCard } from '@/components/split/ExpenseCard'
-import { formatCurrency } from '@/utils/helpers'
-import { useSettingsStore } from '@/store/settingsStore'
+} from "react-native";
+import { useLocalSearchParams, useRouter, Stack } from "expo-router";
+import { Feather } from "@expo/vector-icons";
+import { useSplitStore } from "@/store/splitStore";
+import { colors } from "@/constants/colors";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { ExpenseCard } from "@/components/split/ExpenseCard";
+import { formatCurrency } from "@/utils/helpers";
+import { useSettingsStore } from "@/store/settingsStore";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function GroupDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>()
-  const router = useRouter()
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const { getGroupById, getExpensesByGroup, getBalances, deleteGroup } =
-    useSplitStore()
-  const { currency } = useSettingsStore()
+    useSplitStore();
+  const { currency } = useSettingsStore();
+  const { user } = useAuth();
 
-  const group = getGroupById(id)
-  const expenses = group ? getExpensesByGroup(id) : []
-  const balances = group ? getBalances(id) : {}
+  const group = getGroupById(id);
+  const expenses = group ? getExpensesByGroup(id) : [];
+  const balances = group ? getBalances(id) : {};
 
   if (!group) {
     return (
       <View style={styles.container}>
         <Text style={styles.errorText}>Group not found</Text>
         <Button
-          title='Go Back'
+          title="Go Back"
           onPress={() => router.back()}
           style={styles.errorButton}
         />
       </View>
-    )
+    );
   }
 
   const handleEdit = () => {
-    router.push(`/split/edit-group/${id}`)
-  }
+    router.push(`/split/edit-group/${id}`);
+  };
 
   const handleDelete = async () => {
     try {
-      await deleteGroup(id)
-      router.back()
+      await deleteGroup(id);
+      router.back();
     } catch (error) {
-      console.error('Failed to delete group:', error)
+      console.error("Failed to delete group:", error);
       // Still navigate back even if database operation fails
-      router.back()
+      router.back();
     }
-  }
+  };
 
   const handleAddExpense = () => {
-    router.push(`/split/new-expense/${id}`)
-  }
+    router.push(`/split/new-expense/${id}`);
+  };
 
   const navigateToExpenseDetails = (expenseId: string) => {
-    router.push(`/split/expense/${expenseId}`)
-  }
+    router.push(`/split/expense/${expenseId}`);
+  };
 
   const totalExpenses = expenses.reduce(
     (sum, expense) => sum + expense.amount,
     0
-  )
+  );
 
   return (
     <View style={styles.container}>
@@ -75,7 +77,7 @@ export default function GroupDetailScreen() {
           title: group.name,
           headerRight: () => (
             <TouchableOpacity onPress={handleEdit} style={styles.editButton}>
-              <Feather name='edit' size={20} color={colors.primary} />
+              <Feather name="edit" size={20} color={colors.primary} />
             </TouchableOpacity>
           ),
         }}
@@ -102,10 +104,10 @@ export default function GroupDetailScreen() {
         </View>
 
         <Button
-          title='Add Expense'
+          title="Add Expense"
           onPress={handleAddExpense}
           style={styles.addButton}
-          icon={<Feather name='plus' size={16} color='white' />}
+          icon={<Feather name="plus" size={16} color="white" />}
         />
       </Card>
 
@@ -113,7 +115,7 @@ export default function GroupDetailScreen() {
         <Text style={styles.sectionTitle}>Balances</Text>
 
         {group.members.map((member) => {
-          const memberBalance = balances[member.id] || 0
+          const memberBalance = balances[member.id] || 0;
           return (
             <View key={member.id} style={styles.balanceItem}>
               <View style={styles.memberInfo}>
@@ -128,7 +130,7 @@ export default function GroupDetailScreen() {
                   </Text>
                 </View>
                 <Text style={styles.memberName}>
-                  {member.name} {member.isCurrentUser ? '(You)' : ''}
+                  {member.name} {member.isCurrentUser ? "(You)" : ""}
                 </Text>
               </View>
               <Text
@@ -144,7 +146,7 @@ export default function GroupDetailScreen() {
                 {formatCurrency(memberBalance, currency)}
               </Text>
             </View>
-          )
+          );
         })}
       </Card>
 
@@ -168,7 +170,7 @@ export default function GroupDetailScreen() {
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>No expenses in this group</Text>
             <Button
-              title='Add Expense'
+              title="Add Expense"
               onPress={handleAddExpense}
               style={styles.emptyButton}
             />
@@ -177,37 +179,39 @@ export default function GroupDetailScreen() {
       </View>
 
       <View style={styles.deleteContainer}>
-        <Button
-          title='Delete Group'
-          variant='outline'
-          onPress={handleDelete}
-          style={styles.deleteButton}
-          textStyle={{ color: colors.error }}
-          icon={<Feather name='trash-2' size={16} color={colors.error} />}
-        />
+        {group.creatorId === user?.id && (
+          <Button
+            title="Delete Group"
+            variant="outline"
+            onPress={handleDelete}
+            style={styles.deleteButton}
+            textStyle={{ color: colors.error }}
+            icon={<Feather name="trash-2" size={16} color={colors.error} />}
+          />
+        )}
       </View>
     </View>
-  )
+  );
 }
 
 const getMemberColor = (id: string): string => {
   const colors = [
-    '#6366f1', // Indigo
-    '#f97316', // Orange
-    '#10b981', // Emerald
-    '#3b82f6', // Blue
-    '#f59e0b', // Amber
-    '#ef4444', // Red
-  ]
+    "#6366f1", // Indigo
+    "#f97316", // Orange
+    "#10b981", // Emerald
+    "#3b82f6", // Blue
+    "#f59e0b", // Amber
+    "#ef4444", // Red
+  ];
 
   // Simple hash function to get consistent colors
-  let hash = 0
+  let hash = 0;
   for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash)
+    hash = id.charCodeAt(i) + ((hash << 5) - hash);
   }
 
-  return colors[Math.abs(hash) % colors.length]
-}
+  return colors[Math.abs(hash) % colors.length];
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -223,7 +227,7 @@ const styles = StyleSheet.create({
   },
   summaryTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: "600",
     color: colors.text,
     marginBottom: 4,
   },
@@ -233,7 +237,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   statsContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 16,
   },
   statItem: {
@@ -246,7 +250,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     color: colors.text,
   },
   addButton: {
@@ -258,33 +262,33 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     color: colors.text,
     marginBottom: 16,
   },
   balanceItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
   },
   memberInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   memberAvatar: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
   memberInitial: {
-    color: 'white',
-    fontWeight: '600',
+    color: "white",
+    fontWeight: "600",
     fontSize: 16,
   },
   memberName: {
@@ -293,7 +297,7 @@ const styles = StyleSheet.create({
   },
   balanceAmount: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   positiveBalance: {
     color: colors.success,
@@ -314,16 +318,16 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     padding: 24,
-    alignItems: 'center',
+    alignItems: "center",
   },
   emptyText: {
     fontSize: 16,
     color: colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 16,
   },
   emptyButton: {
-    width: '60%',
+    width: "60%",
   },
   deleteContainer: {
     padding: 16,
@@ -335,12 +339,12 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 18,
     color: colors.text,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: 24,
     marginBottom: 16,
   },
   errorButton: {
-    alignSelf: 'center',
+    alignSelf: "center",
     width: 200,
   },
-})
+});
