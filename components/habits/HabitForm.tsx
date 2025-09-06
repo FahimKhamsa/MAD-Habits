@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, LayoutAnimation, Platform, UIManager } from "react-native";
 import { useRouter } from "expo-router";
+import { Feather } from "@expo/vector-icons"; // Import Feather
 import { Habit } from "@/types";
 import { colors } from "@/constants/colors";
 import { Input } from "@/components/ui/Input";
@@ -51,6 +52,23 @@ export const HabitForm: React.FC<HabitFormProps> = ({ habit, onComplete }) => {
   ); // Mon-Fri by default
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showIconSelection, setShowIconSelection] = useState(false);
+  const [showColorSelection, setShowColorSelection] = useState(false);
+
+  if (Platform.OS === 'android') {
+    UIManager.setLayoutAnimationEnabledExperimental &&
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+
+  const toggleIconSelection = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setShowIconSelection(!showIconSelection);
+  };
+
+  const toggleColorSelection = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setShowColorSelection(!showColorSelection);
+  };
 
   const validateForm = (): boolean => {
     const newErrors: { [key: string]: string } = {};
@@ -143,40 +161,58 @@ export const HabitForm: React.FC<HabitFormProps> = ({ habit, onComplete }) => {
 
       {/* Icon Selection */}
       <View style={styles.section}>
-        <Text style={styles.label}>Icon</Text>
-        <View style={styles.iconGrid}>
-          {HABIT_ICONS.map((iconOption) => (
-            <TouchableOpacity
-              key={iconOption}
-              style={[
-                styles.iconButton,
-                icon === iconOption && styles.iconButtonSelected,
-                { borderColor: icon === iconOption ? color : colors.borderLight }
-              ]}
-              onPress={() => setIcon(iconOption)}
-            >
-              <Text style={styles.iconText}>{iconOption}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <TouchableOpacity onPress={toggleIconSelection} style={styles.collapsibleHeader}>
+          <Text style={styles.label}>Icon</Text>
+          <Feather
+            name={showIconSelection ? "chevron-up" : "chevron-down"}
+            size={20}
+            color={colors.textSecondary}
+          />
+        </TouchableOpacity>
+        {showIconSelection && (
+          <View style={styles.iconGrid}>
+            {HABIT_ICONS.map((iconOption) => (
+              <TouchableOpacity
+                key={iconOption}
+                style={[
+                  styles.iconButton,
+                  icon === iconOption && styles.iconButtonSelected,
+                  { borderColor: icon === iconOption ? color : colors.borderLight }
+                ]}
+                onPress={() => setIcon(iconOption)}
+              >
+                <Text style={styles.iconText}>{iconOption}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Color Selection */}
       <View style={styles.section}>
-        <Text style={styles.label}>Color</Text>
-        <View style={styles.colorGrid}>
-          {HABIT_COLORS.map((colorOption) => (
-            <TouchableOpacity
-              key={colorOption}
-              style={[
-                styles.colorButton,
-                { backgroundColor: colorOption },
-                color === colorOption && styles.colorButtonSelected,
-              ]}
-              onPress={() => setColor(colorOption)}
-            />
-          ))}
-        </View>
+        <TouchableOpacity onPress={toggleColorSelection} style={styles.collapsibleHeader}>
+          <Text style={styles.label}>Color</Text>
+          <Feather
+            name={showColorSelection ? "chevron-up" : "chevron-down"}
+            size={20}
+            color={colors.textSecondary}
+          />
+        </TouchableOpacity>
+        {showColorSelection && (
+          <View style={styles.colorGrid}>
+            {HABIT_COLORS.map((colorOption) => (
+              <TouchableOpacity
+                key={colorOption}
+                style={[
+                  styles.colorButton,
+                  { backgroundColor: colorOption },
+                  color === colorOption && styles.colorButtonSelected,
+                ]}
+                onPress={() => setColor(colorOption)}
+              />
+            ))}
+          </View>
+        )}
       </View>
 
       {/* Preview */}
@@ -262,11 +298,17 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 20,
   },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingVertical: 8,
+  },
   label: {
     fontSize: 14,
     fontWeight: "500",
     color: colors.text,
-    marginBottom: 8,
   },
   iconGrid: {
     flexDirection: 'row',

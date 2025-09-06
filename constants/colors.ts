@@ -13,6 +13,8 @@ export const colors = {
   textSecondary: "#6b7280",
   border: "#e5e7eb",
   borderLight: "#f3f4f6",
+  white: "#ffffff", // Added white color
+  cardBackground: "#f9fafb", // Added cardBackground for clarity
 };
 
 export const theme = {

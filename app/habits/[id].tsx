@@ -14,6 +14,7 @@ import { colors } from "@/constants/colors";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import Calendar from "@/components/ui/Calendar"; // Import Calendar component
 import { formatDate } from "@/utils/helpers";
 
 export default function HabitDetailScreen() {
@@ -105,8 +106,6 @@ export default function HabitDetailScreen() {
     }
     return dates;
   };
-
-  const last7Days = getLast7Days();
 
   return (
     <ScrollView style={styles.container}>
@@ -214,39 +213,12 @@ export default function HabitDetailScreen() {
       </Card>
 
       <Card style={styles.historyCard}>
-        <Text style={styles.sectionTitle}>Recent History</Text>
-
-        <View style={styles.historyList}>
-          {last7Days.map((date) => {
-            const isCompleted = habit.completedDates.includes(date);
-            return (
-              <TouchableOpacity
-                key={date}
-                style={styles.historyItem}
-                onPress={() => handleToggleCompletion(date)}
-                activeOpacity={0.7}
-                disabled={isLoading}
-              >
-                <Text style={styles.historyDate}>
-                  {formatDate(date, "short")}
-                </Text>
-                <View style={styles.historyStatusContainer}>
-                  {isLoading && (
-                    <Text style={styles.loadingText}>...</Text>
-                  )}
-                  <View
-                    style={[
-                      styles.historyStatus,
-                      isCompleted
-                        ? styles.historyCompleted
-                        : styles.historyIncomplete,
-                    ]}
-                  />
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <Text style={styles.sectionTitle}>Tracking History</Text>
+        <Calendar
+          habit={habit}
+          onSelectDate={handleToggleCompletion}
+          completedDates={habit.completedDates}
+        />
       </Card>
 
       <View style={styles.deleteContainer}>
@@ -354,43 +326,8 @@ const styles = StyleSheet.create({
     margin: 16,
     marginVertical: 8,
   },
-  historyList: {
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-    paddingTop: 8,
-  },
-  historyItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  historyDate: {
-    fontSize: 16,
-    color: colors.text,
-  },
-  historyStatusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginRight: 8,
-  },
-  historyStatus: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-  },
-  historyCompleted: {
-    backgroundColor: colors.success,
-  },
-  historyIncomplete: {
-    backgroundColor: colors.borderLight,
-  },
+  // Removed historyList, historyItem, historyDate, historyStatusContainer, loadingText, historyStatus, historyCompleted, historyIncomplete styles
+  // as they are replaced by the Calendar component
   deleteContainer: {
     padding: 16,
     marginBottom: 32,

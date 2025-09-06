@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Alert } from "react-native"; // Import Alert
 import { Habit, HabitCompletion } from "@/types";
 import { generateId } from "@/utils/helpers";
 import { habitDb } from "@/services/habitDatabase";
@@ -48,6 +49,8 @@ interface HabitState {
   getHabitCompletionsForDate: (date: string) => HabitCompletion[];
   getHabitById: (id: string) => Habit | undefined;
   getHabitsForDate: (date: string) => Habit[];
+  calculateStreak: (completedDates: string[]) => { currentStreak: number; bestStreak: number };
+  getYesterday: () => string;
   
   // Offline support
   setOnlineStatus: (isOnline: boolean) => void;
@@ -218,30 +221,116 @@ export const useHabitStore = create<HabitState>()(
         }
       },
 
-      // Toggle habit completion (online/offline)
+      // Toggle habit completion (online/offline with optimistic update)
       toggleHabitCompletion: async (habitId, date, note) => {
-        const { isOnline } = get();
-        
+        const { isOnline, habits, completions } = get();
+        const dateStr = date.split('T')[0];
+
+        // Optimistic UI update
+        const habitToUpdate = habits.find(h => h.id === habitId);
+        if (!habitToUpdate) return;
+
+        const existingCompletion = completions.find(
+          c => c.habitId === habitId && c.date.split('T')[0] === dateStr
+        );
+
+        const newCompletedStatus = existingCompletion ? !existingCompletion.completed : true;
+
+        // Update local state immediately
+        set(state => {
+          const updatedCompletions = existingCompletion
+            ? state.completions.map(c =>
+                c.habitId === habitId && c.date.split('T')[0] === dateStr
+                  ? { ...c, completed: newCompletedStatus, note }
+                  : c
+              )
+            : [
+                ...state.completions,
+                {
+                  id: 'temp-' + Math.random().toString(36).substr(2, 9), // Temporary ID for optimistic update
+                  habitId,
+                  date: dateStr,
+                  completed: newCompletedStatus,
+                  note,
+                },
+              ];
+
+          // Recalculate streak for optimistic update
+          const completedDatesForHabit = updatedCompletions
+            .filter(c => c.habitId === habitId && c.completed)
+            .map(c => c.date.split('T')[0]);
+
+          const { currentStreak, bestStreak } = get().calculateStreak(completedDatesForHabit); // Use existing streak calculation
+
+          const updatedHabits = state.habits.map(h =>
+            h.id === habitId
+              ? {
+                  ...h,
+                  streak: currentStreak,
+                  bestStreak,
+                  completedDates: completedDatesForHabit,
+                  updatedAt: new Date().toISOString(),
+                }
+              : h
+          );
+
+          return {
+            habits: updatedHabits,
+            completions: updatedCompletions,
+          };
+        });
+
+        // Perform backend update in the background
         if (isOnline) {
           try {
-            const { habit, completion } = await habitDb.toggleHabitCompletion(habitId, date, note);
+            const { habit: backendHabit, completion: backendCompletion } = await habitDb.toggleHabitCompletion(habitId, date, note);
             
-            set((state) => ({
-              habits: state.habits.map((h) => (h.id === habitId ? habit : h)),
-              completions: [
-                ...state.completions.filter(
-                  (c) => !(c.habitId === habitId && c.date.split('T')[0] === date.split('T')[0])
-                ),
-                completion,
-              ],
+            // Update state with actual backend data, replacing optimistic data
+            set(state => ({
+              habits: state.habits.map(h => (h.id === habitId ? backendHabit : h)),
+              completions: state.completions.map(c =>
+                c.habitId === habitId && c.date.split('T')[0] === dateStr
+                  ? backendCompletion // Replace temp completion with actual
+                  : c
+              ).filter(c => !c.id.startsWith('temp-') || c.habitId !== habitId || c.date.split('T')[0] !== dateStr), // Remove temp if not replaced
             }));
+
           } catch (error) {
             console.error('Error toggling completion online:', error);
-            
-            // Fallback to offline toggle
-            get().toggleHabitCompletionOffline(habitId, date, note);
+            Alert.alert("Error", "Failed to update habit completion. Reverting changes.");
+            // Revert UI on error
+            set(state => {
+              const originalHabit = habits.find(h => h.id === habitId);
+              const originalCompletions = completions.filter(c => c.habitId !== habitId || c.date.split('T')[0] !== dateStr);
+              if (existingCompletion) {
+                originalCompletions.push(existingCompletion);
+              }
+
+              const completedDatesForOriginalHabit = originalCompletions
+                .filter(c => c.habitId === habitId && c.completed)
+                .map(c => c.date.split('T')[0]);
+
+              const { currentStreak, bestStreak } = get().calculateStreak(completedDatesForOriginalHabit);
+
+              const revertedHabits = state.habits.map(h =>
+                h.id === habitId
+                  ? {
+                      ...originalHabit!,
+                      streak: currentStreak,
+                      bestStreak,
+                      completedDates: completedDatesForOriginalHabit,
+                    }
+                  : h
+              );
+
+              return {
+                habits: revertedHabits,
+                completions: originalCompletions,
+              };
+            });
           }
         } else {
+          // If offline, just use the offline toggle logic (which already updates local state)
           get().toggleHabitCompletionOffline(habitId, date, note);
         }
       },
@@ -285,30 +374,7 @@ export const useHabitStore = create<HabitState>()(
           .filter((c) => c.habitId === habitId && c.completed)
           .map((c) => c.date.split("T")[0]);
 
-        // Simple streak calculation
-        const sortedDates = [...completedDates].sort();
-        let currentStreak = 0;
-
-        const today = new Date().toISOString().split("T")[0];
-        if (completedDates.includes(today)) {
-          currentStreak = 1;
-
-          const yesterday = new Date();
-          yesterday.setDate(yesterday.getDate() - 1);
-
-          let checkDate = yesterday;
-          while (true) {
-            const checkDateStr = checkDate.toISOString().split("T")[0];
-            if (completedDates.includes(checkDateStr)) {
-              currentStreak++;
-              checkDate.setDate(checkDate.getDate() - 1);
-            } else {
-              break;
-            }
-          }
-        }
-
-        const bestStreak = Math.max(habit.bestStreak, currentStreak);
+        const { currentStreak, bestStreak } = get().calculateStreak(completedDates);
 
         set({
           completions: newCompletions,
@@ -324,6 +390,62 @@ export const useHabitStore = create<HabitState>()(
               : h
           ),
         });
+      },
+
+      // Helper function to calculate streak (moved from habitDatabase.ts for offline use)
+      calculateStreak: (completedDates: string[]): { currentStreak: number; bestStreak: number } => {
+        if (completedDates.length === 0) {
+          return { currentStreak: 0, bestStreak: 0 };
+        }
+
+        const sortedDates = completedDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+        const today = new Date().toISOString().split('T')[0];
+        
+        let currentStreak = 0;
+        let bestStreak = 0;
+        let tempStreak = 0;
+
+        // Calculate current streak
+        if (sortedDates[0] === today || sortedDates[0] === get().getYesterday()) {
+          currentStreak = 1;
+          
+          for (let i = 1; i < sortedDates.length; i++) {
+            const currentDate = new Date(sortedDates[i - 1]);
+            const nextDate = new Date(sortedDates[i]);
+            const daysDifference = Math.floor((currentDate.getTime() - nextDate.getTime()) / (1000 * 60 * 60 * 24));
+            
+            if (daysDifference === 1) {
+              currentStreak++;
+            } else {
+              break;
+            }
+          }
+        }
+
+        // Calculate best streak
+        tempStreak = 1;
+        for (let i = 1; i < sortedDates.length; i++) {
+          const currentDate = new Date(sortedDates[i - 1]);
+          const nextDate = new Date(sortedDates[i]);
+          const daysDifference = Math.floor((currentDate.getTime() - nextDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (daysDifference === 1) {
+            tempStreak++;
+          } else {
+            bestStreak = Math.max(bestStreak, tempStreak);
+            tempStreak = 1;
+          }
+        }
+        bestStreak = Math.max(bestStreak, tempStreak, currentStreak);
+
+        return { currentStreak, bestStreak };
+      },
+
+      // Helper function to get yesterday's date (moved from habitDatabase.ts for offline use)
+      getYesterday: (): string => {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        return yesterday.toISOString().split('T')[0];
       },
 
       // Sync local data to cloud
@@ -368,9 +490,15 @@ export const useHabitStore = create<HabitState>()(
           if (
             habit.frequency === "weekly" &&
             habit.daysOfWeek?.includes(dayOfWeek)
-          )
+          ) {
             return true;
-          // For monthly, we could check if it's the same day of month
+          }
+          if (
+            habit.frequency === "monthly" &&
+            new Date(habit.createdAt).getDate() === dateObj.getDate()
+          ) {
+            return true;
+          }
           return false;
         });
       },
