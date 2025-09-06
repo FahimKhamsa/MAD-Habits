@@ -247,3 +247,145 @@ export async function rememberExpenseId(
   map.expenses[localExpenseId] = supaExpenseId
   await saveMap(map)
 }
+
+// Delete group from database
+export async function deleteGroupRemote(groupId: string) {
+  const map = await loadMap()
+  const supaGroupId = map.groups[groupId]
+
+  if (!supaGroupId) {
+    console.warn('No remote group ID found for local group:', groupId)
+    return
+  }
+
+  // First get all expense IDs for this group
+  const { data: expenseIds, error: expenseIdsErr } = await supabase
+    .from('shared_expenses')
+    .select('id')
+    .eq('group_id', supaGroupId)
+
+  if (expenseIdsErr) throw expenseIdsErr
+
+  // Delete expense splits first (foreign key constraint)
+  if (expenseIds && expenseIds.length > 0) {
+    const { error: splitsErr } = await supabase
+      .from('expense_splits')
+      .delete()
+      .in(
+        'expense_id',
+        expenseIds.map((e) => e.id)
+      )
+
+    if (splitsErr) throw splitsErr
+  }
+
+  // Delete shared expenses
+  const { error: expensesErr } = await supabase
+    .from('shared_expenses')
+    .delete()
+    .eq('group_id', supaGroupId)
+
+  if (expensesErr) throw expensesErr
+
+  // Delete group members
+  const { error: membersErr } = await supabase
+    .from('group_members')
+    .delete()
+    .eq('group_id', supaGroupId)
+
+  if (membersErr) throw membersErr
+
+  // Delete group
+  const { error: groupErr } = await supabase
+    .from('groups')
+    .delete()
+    .eq('id', supaGroupId)
+
+  if (groupErr) throw groupErr
+
+  // Clean up mapping
+  delete map.groups[groupId]
+  await saveMap(map)
+}
+
+// Delete expense from database
+export async function deleteExpenseRemote(expenseId: string) {
+  const map = await loadMap()
+  const supaExpenseId = map.expenses[expenseId]
+
+  if (!supaExpenseId) {
+    console.warn('No remote expense ID found for local expense:', expenseId)
+    return
+  }
+
+  // Delete expense splits first
+  const { error: splitsErr } = await supabase
+    .from('expense_splits')
+    .delete()
+    .eq('expense_id', supaExpenseId)
+
+  if (splitsErr) throw splitsErr
+
+  // Delete shared expense
+  const { error: expenseErr } = await supabase
+    .from('shared_expenses')
+    .delete()
+    .eq('id', supaExpenseId)
+
+  if (expenseErr) throw expenseErr
+
+  // Clean up mapping
+  delete map.expenses[expenseId]
+  await saveMap(map)
+}
+
+// Create group in database and return the mapping
+export async function createGroupRemote(
+  localGroupId: string,
+  name: string,
+  members: Array<{
+    name: string
+    email: string
+    isCurrentUser: boolean
+  }>
+): Promise<string> {
+  const map = await loadMap()
+
+  // Create group
+  const { data: auth } = await supabase.auth.getUser()
+  const creatorId = auth.user?.id ?? null
+
+  const { data: groupRow, error: groupErr } = await supabase
+    .from('groups')
+    .insert({ name, creator_id: creatorId })
+    .select('id')
+    .single()
+
+  if (groupErr || !groupRow) {
+    throw groupErr || new Error('Group creation failed')
+  }
+
+  // Create group members
+  const membersPayload = members.map((member) => ({
+    group_id: groupRow.id,
+    name: member.name,
+    email: member.email,
+    is_current_user: member.isCurrentUser,
+  }))
+
+  const { error: membersErr } = await supabase
+    .from('group_members')
+    .insert(membersPayload)
+
+  if (membersErr) {
+    // Clean up group if members creation fails
+    await supabase.from('groups').delete().eq('id', groupRow.id)
+    throw membersErr
+  }
+
+  // Store mapping
+  map.groups[localGroupId] = groupRow.id
+  await saveMap(map)
+
+  return groupRow.id
+}

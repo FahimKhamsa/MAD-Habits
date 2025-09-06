@@ -1,78 +1,125 @@
-import React, { useState } from "react";
+import React, { useState } from 'react'
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-} from "react-native";
-import { useHabits } from "@/hooks/useHabits";
-import { useBudgetStore } from "@/store/budgetStore";
-import { colors } from "@/constants/colors";
-import { Card } from "@/components/ui/Card";
-import { formatCurrency } from "@/utils/helpers";
-import { useSettingsStore } from "@/store/settingsStore";
+  Alert,
+} from 'react-native'
+import { useRouter } from 'expo-router'
+import { Feather } from '@expo/vector-icons'
+import { useHabits } from '@/hooks/useHabits'
+import { useBudgetStore } from '@/store/budgetStore'
+import { colors } from '@/constants/colors'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { formatCurrency } from '@/utils/helpers'
+import { useSettingsStore } from '@/store/settingsStore'
+import { useAuth } from '@/contexts/AuthContext'
 
-type StatTab = "habits" | "budget" | "split";
+type StatTab = 'habits' | 'budget' | 'split'
 
 export default function StatsScreen() {
-  const [activeTab, setActiveTab] = useState<StatTab>("habits");
-  const { habits } = useHabits();
-  const { categories, transactions } = useBudgetStore();
-  const { currency } = useSettingsStore();
+  const [activeTab, setActiveTab] = useState<StatTab>('habits')
+  const { habits } = useHabits()
+  const { categories, transactions } = useBudgetStore()
+  const { currency } = useSettingsStore()
+  const { user, signOut } = useAuth()
+  const router = useRouter()
 
   // Habit stats
-  const totalHabits = habits.length;
-  const completedToday = habits.filter((habit) => habit.streak > 0).length;
+  const totalHabits = habits.length
+  const completedToday = habits.filter((habit) => habit.streak > 0).length
   const longestStreak = habits.reduce(
     (max, habit) => Math.max(max, habit.bestStreak),
     0
-  );
+  )
   const averageStreak =
     habits.length > 0
       ? habits.reduce((sum, habit) => sum + habit.streak, 0) / habits.length
-      : 0;
+      : 0
 
   // Budget stats
   const totalBudget = categories.reduce(
     (sum, category) => sum + category.limit,
     0
-  );
+  )
   const totalSpent = categories.reduce(
     (sum, category) => sum + category.spent,
     0
-  );
+  )
   const mostExpensiveCategory = [...categories].sort(
     (a, b) => b.spent - a.spent
-  )[0];
+  )[0]
   const transactionsThisMonth = transactions.filter((t) => {
-    const transactionDate = new Date(t.date);
-    const today = new Date();
+    const transactionDate = new Date(t.date)
+    const today = new Date()
     return (
       transactionDate.getMonth() === today.getMonth() &&
       transactionDate.getFullYear() === today.getFullYear()
-    );
-  });
+    )
+  })
+
+  const handleLogout = () => {
+    console.log('Logout button pressed!')
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          console.log('User confirmed logout')
+          try {
+            console.log('Calling signOut...')
+            await signOut()
+            console.log('SignOut successful, navigating to login')
+            router.replace('/login')
+          } catch (error) {
+            console.error('Logout error:', error)
+            Alert.alert('Error', 'Failed to logout. Please try again.')
+          }
+        },
+      },
+    ])
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Your Stats</Text>
-        <Text style={styles.subtitle}>
-          Track your progress across all features
-        </Text>
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={styles.title}>Your Stats</Text>
+            <Text style={styles.subtitle}>
+              Track your progress across all features
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={() => {
+              console.log('Logout TouchableOpacity pressed!')
+              handleLogout()
+            }}
+            activeOpacity={0.7}
+          >
+            <Feather name='log-out' size={20} color={colors.error} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.tabsContainer}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === "habits" && styles.activeTab]}
-          onPress={() => setActiveTab("habits")}
+          style={[styles.tab, activeTab === 'habits' && styles.activeTab]}
+          onPress={() => setActiveTab('habits')}
           activeOpacity={0.7}
         >
           <Text
             style={[
               styles.tabText,
-              activeTab === "habits" && styles.activeTabText,
+              activeTab === 'habits' && styles.activeTabText,
             ]}
           >
             Habits
@@ -80,14 +127,14 @@ export default function StatsScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.tab, activeTab === "budget" && styles.activeTab]}
-          onPress={() => setActiveTab("budget")}
+          style={[styles.tab, activeTab === 'budget' && styles.activeTab]}
+          onPress={() => setActiveTab('budget')}
           activeOpacity={0.7}
         >
           <Text
             style={[
               styles.tabText,
-              activeTab === "budget" && styles.activeTabText,
+              activeTab === 'budget' && styles.activeTabText,
             ]}
           >
             Budget
@@ -95,14 +142,14 @@ export default function StatsScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.tab, activeTab === "split" && styles.activeTab]}
-          onPress={() => setActiveTab("split")}
+          style={[styles.tab, activeTab === 'split' && styles.activeTab]}
+          onPress={() => setActiveTab('split')}
           activeOpacity={0.7}
         >
           <Text
             style={[
               styles.tabText,
-              activeTab === "split" && styles.activeTabText,
+              activeTab === 'split' && styles.activeTabText,
             ]}
           >
             Split
@@ -111,7 +158,7 @@ export default function StatsScreen() {
       </View>
 
       <ScrollView style={styles.content}>
-        {activeTab === "habits" && (
+        {activeTab === 'habits' && (
           <View>
             <Card style={styles.statsCard}>
               <Text style={styles.statsTitle}>Habit Overview</Text>
@@ -153,11 +200,11 @@ export default function StatsScreen() {
                       <View style={styles.habitInfo}>
                         <Text style={styles.habitName}>{habit.name}</Text>
                         <Text style={styles.habitFrequency}>
-                          {habit.frequency === "daily"
-                            ? "Daily"
-                            : habit.frequency === "weekly"
-                            ? "Weekly"
-                            : "Monthly"}
+                          {habit.frequency === 'daily'
+                            ? 'Daily'
+                            : habit.frequency === 'weekly'
+                            ? 'Weekly'
+                            : 'Monthly'}
                         </Text>
                       </View>
                       <View style={styles.habitStreak}>
@@ -175,7 +222,7 @@ export default function StatsScreen() {
           </View>
         )}
 
-        {activeTab === "budget" && (
+        {activeTab === 'budget' && (
           <View>
             <Card style={styles.statsCard}>
               <Text style={styles.statsTitle}>Budget Overview</Text>
@@ -241,7 +288,7 @@ export default function StatsScreen() {
           </View>
         )}
 
-        {activeTab === "split" && (
+        {activeTab === 'split' && (
           <View>
             <Card style={styles.statsCard}>
               <Text style={styles.statsTitle}>Split Expenses Coming Soon</Text>
@@ -254,7 +301,7 @@ export default function StatsScreen() {
         )}
       </ScrollView>
     </View>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
@@ -266,9 +313,14 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 8,
   },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   title: {
     fontSize: 24,
-    fontWeight: "700",
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -276,15 +328,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
   },
+  logoutButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: colors.error + '10',
+  },
   tabsContainer: {
-    flexDirection: "row",
+    flexDirection: 'row',
     paddingHorizontal: 16,
     marginBottom: 16,
   },
   tab: {
     flex: 1,
     paddingVertical: 12,
-    alignItems: "center",
+    alignItems: 'center',
     borderBottomWidth: 2,
     borderBottomColor: colors.borderLight,
   },
@@ -293,7 +350,7 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontSize: 16,
-    fontWeight: "500",
+    fontWeight: '500',
     color: colors.textSecondary,
   },
   activeTabText: {
@@ -308,22 +365,22 @@ const styles = StyleSheet.create({
   },
   statsTitle: {
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: '600',
     color: colors.text,
     marginBottom: 16,
   },
   statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
   statItem: {
-    width: "48%",
+    width: '48%',
     marginBottom: 16,
   },
   statValue: {
     fontSize: 20,
-    fontWeight: "700",
+    fontWeight: '700',
     color: colors.primary,
     marginBottom: 4,
   },
@@ -332,9 +389,9 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   habitItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
@@ -344,7 +401,7 @@ const styles = StyleSheet.create({
   },
   habitName: {
     fontSize: 16,
-    fontWeight: "500",
+    fontWeight: '500',
     color: colors.text,
     marginBottom: 2,
   },
@@ -353,11 +410,11 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   habitStreak: {
-    alignItems: "flex-end",
+    alignItems: 'flex-end',
   },
   habitStreakValue: {
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: '700',
     color: colors.primary,
   },
   habitStreakLabel: {
@@ -365,9 +422,9 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   categoryItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
@@ -377,7 +434,7 @@ const styles = StyleSheet.create({
   },
   categoryName: {
     fontSize: 16,
-    fontWeight: "500",
+    fontWeight: '500',
     color: colors.text,
     marginBottom: 2,
   },
@@ -387,13 +444,13 @@ const styles = StyleSheet.create({
   },
   categoryAmount: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: '600',
     color: colors.text,
   },
   emptyText: {
     fontSize: 14,
     color: colors.textSecondary,
-    textAlign: "center",
+    textAlign: 'center',
     paddingVertical: 16,
   },
-});
+})
