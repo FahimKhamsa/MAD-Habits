@@ -94,11 +94,7 @@ export default function ExpenseDetailScreen() {
           <View style={styles.metaItem}>
             <Text style={styles.metaLabel}>Paid by</Text>
             <Text style={styles.metaValue}>
-              {paidByMember
-                ? paidByMember.isCurrentUser
-                  ? 'You'
-                  : paidByMember.name
-                : 'Unknown'}
+              {paidByMember ? paidByMember.name : 'Unknown'}
             </Text>
           </View>
 

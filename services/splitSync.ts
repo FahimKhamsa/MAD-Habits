@@ -485,3 +485,19 @@ export async function loadUserGroups(): Promise<Group[]> {
 
   return groups
 }
+
+// Get user profile by UUID
+export async function getUserProfile(userId: string) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, email, full_name')
+    .eq('id', userId)
+    .single()
+
+  if (error) {
+    console.error('Error fetching user profile:', error)
+    return null
+  }
+
+  return data
+}

@@ -16,6 +16,7 @@ import { useSplitStore } from '@/store/splitStore'
 import { supabase } from '@/lib/supabase'
 import { Feather } from '@expo/vector-icons'
 import { useAuth } from '@/contexts/AuthContext'
+import { getUserProfile } from '@/services/splitSync'
 
 interface GroupFormProps {
   group?: Group
@@ -52,36 +53,76 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // ★ Hydrate current user's email/name from auth context
+  // ★ Hydrate current user's email/name from profiles table
   useEffect(() => {
     if (group || !user) return
 
-    const userEmail = user.email || ''
-    const userName =
-      user.user_metadata?.full_name || user.user_metadata?.name || 'You'
+    const hydrateCurrentUser = async () => {
+      try {
+        // First try to get name from profiles table
+        const profile = await getUserProfile(user.id)
+        const userEmail = user.email || ''
+        const userName =
+          profile?.full_name ||
+          user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          'You'
 
-    setMembers((prev) => {
-      const idx = prev.findIndex((m) => m.isCurrentUser)
-      if (idx === -1) {
-        return [
-          {
+        setMembers((prev) => {
+          const idx = prev.findIndex((m) => m.isCurrentUser)
+          if (idx === -1) {
+            return [
+              {
+                email: userEmail,
+                isCurrentUser: true,
+                name: userName,
+                userId: user.id,
+              },
+              ...prev,
+            ]
+          }
+          const copy = [...prev]
+          copy[idx] = {
+            ...copy[idx],
             email: userEmail,
-            isCurrentUser: true,
             name: userName,
             userId: user.id,
-          },
-          ...prev,
-        ]
+          }
+          return copy
+        })
+      } catch (error) {
+        console.error('Error fetching user profile:', error)
+        // Fallback to auth metadata
+        const userEmail = user.email || ''
+        const userName =
+          user.user_metadata?.full_name || user.user_metadata?.name || 'You'
+
+        setMembers((prev) => {
+          const idx = prev.findIndex((m) => m.isCurrentUser)
+          if (idx === -1) {
+            return [
+              {
+                email: userEmail,
+                isCurrentUser: true,
+                name: userName,
+                userId: user.id,
+              },
+              ...prev,
+            ]
+          }
+          const copy = [...prev]
+          copy[idx] = {
+            ...copy[idx],
+            email: userEmail,
+            name: userName,
+            userId: user.id,
+          }
+          return copy
+        })
       }
-      const copy = [...prev]
-      copy[idx] = {
-        ...copy[idx],
-        email: userEmail,
-        name: userName,
-        userId: user.id,
-      }
-      return copy
-    })
+    }
+
+    hydrateCurrentUser()
   }, [group, user])
 
   const validateForm = (): boolean => {
@@ -199,8 +240,13 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
             }
 
             const userEmail = user.email || ''
+            // Try to get name from profiles table first
+            const profile = await getUserProfile(user.id)
             const userName =
-              user.user_metadata?.full_name || user.user_metadata?.name || 'You'
+              profile?.full_name ||
+              user.user_metadata?.full_name ||
+              user.user_metadata?.name ||
+              'You'
 
             resolvedMembers.push({
               email: userEmail,
