@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/Card";
 import { ExpenseCard } from "@/components/split/ExpenseCard";
 import { formatCurrency } from "@/utils/helpers";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function GroupDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -22,6 +23,7 @@ export default function GroupDetailScreen() {
   const { getGroupById, getExpensesByGroup, getBalances, deleteGroup } =
     useSplitStore();
   const { currency } = useSettingsStore();
+  const { user } = useAuth();
 
   const group = getGroupById(id);
   const expenses = group ? getExpensesByGroup(id) : [];
@@ -44,9 +46,15 @@ export default function GroupDetailScreen() {
     router.push(`/split/edit-group/${id}`);
   };
 
-  const handleDelete = () => {
-    deleteGroup(id);
-    router.back();
+  const handleDelete = async () => {
+    try {
+      await deleteGroup(id);
+      router.back();
+    } catch (error) {
+      console.error("Failed to delete group:", error);
+      // Still navigate back even if database operation fails
+      router.back();
+    }
   };
 
   const handleAddExpense = () => {
@@ -171,14 +179,16 @@ export default function GroupDetailScreen() {
       </View>
 
       <View style={styles.deleteContainer}>
-        <Button
-          title="Delete Group"
-          variant="outline"
-          onPress={handleDelete}
-          style={styles.deleteButton}
-          textStyle={{ color: colors.error }}
-          icon={<Feather name="trash-2" size={16} color={colors.error} />}
-        />
+        {group.creatorId === user?.id && (
+          <Button
+            title="Delete Group"
+            variant="outline"
+            onPress={handleDelete}
+            style={styles.deleteButton}
+            textStyle={{ color: colors.error }}
+            icon={<Feather name="trash-2" size={16} color={colors.error} />}
+          />
+        )}
       </View>
     </View>
   );
