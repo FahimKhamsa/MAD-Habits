@@ -80,6 +80,20 @@ export const getTodayISO = (): string => {
   return new Date().toISOString().split("T")[0];
 };
 
+// Get yesterday's date as ISO string (YYYY-MM-DD)
+export const getYesterdayISO = (): string => {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return yesterday.toISOString().split("T")[0];
+};
+
+// Get the first day of the next month as ISO string (YYYY-MM-DD)
+export const getFirstDayOfNextMonthISO = (date: string | Date = new Date()): string => {
+  const dateObj = typeof date === "string" ? new Date(date) : date;
+  const nextMonth = new Date(dateObj.getFullYear(), dateObj.getMonth() + 1, 1);
+  return nextMonth.toISOString().split("T")[0];
+};
+
 // Check if a date is today
 export const isToday = (date: string | Date): boolean => {
   const dateObj = typeof date === "string" ? new Date(date) : date;

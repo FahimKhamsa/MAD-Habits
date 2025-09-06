@@ -8,9 +8,10 @@ interface CalendarProps {
   habit: Habit;
   onSelectDate: (date: string) => void;
   completedDates: string[];
+  isSettingAlternativeDate?: boolean;
 }
 
-const Calendar: React.FC<CalendarProps> = ({ habit, onSelectDate, completedDates }) => {
+const Calendar: React.FC<CalendarProps> = ({ habit, onSelectDate, completedDates, isSettingAlternativeDate = false }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -58,7 +59,9 @@ const Calendar: React.FC<CalendarProps> = ({ habit, onSelectDate, completedDates
     }
 
     const today = new Date();
-    const todayISO = today.toISOString().split('T')[0];
+    // Ensure todayISO is based on local date to match calendar display
+    const todayLocalISO = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString().split('T')[0];
+    
     const habitCreatedAtDay = new Date(habit.createdAt).getDate();
     const firstCompletionDate = habit.frequency === 'monthly' && completedDates.length > 0
       ? completedDates[0]
@@ -72,9 +75,10 @@ const Calendar: React.FC<CalendarProps> = ({ habit, onSelectDate, completedDates
           }
 
           const date = new Date(year, month, day);
-          const dateISO = date.toISOString().split('T')[0];
-          const isToday = dateISO === todayISO;
-          const isCompleted = completedDates.includes(dateISO);
+          const dateLocalISO = new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString().split('T')[0];
+          const isToday = dateLocalISO === todayLocalISO;
+          const isCompleted = completedDates.includes(dateLocalISO);
+          const isAlternativeCompleted = habit.alternativeCompletionDates?.includes(dateLocalISO);
           let isSelectable = false;
           let dayStyle: any = {};
           let textStyle: any = { color: colors.text };
@@ -87,7 +91,7 @@ const Calendar: React.FC<CalendarProps> = ({ habit, onSelectDate, completedDates
 
           // Daily Habit Logic
           if (habit.frequency === 'daily') {
-            isSelectable = isToday; // Only today is selectable
+            isSelectable = isToday && !isCompleted; // Only today is selectable if not already completed
             if (isCompleted) {
               dayStyle = { backgroundColor: colors.success, borderColor: colors.success };
               textStyle = { color: colors.white, fontWeight: 'bold' };
@@ -100,9 +104,27 @@ const Calendar: React.FC<CalendarProps> = ({ habit, onSelectDate, completedDates
           else if (habit.frequency === 'weekly') {
             const dayOfWeek = date.getDay();
             const isAllottedDay = habit.daysOfWeek?.includes(dayOfWeek) || false;
-            isSelectable = isToday && isAllottedDay; // Only today, if it's an allotted day, is selectable
 
-            if (isCompleted) {
+            if (isSettingAlternativeDate) {
+              // When setting an alternative date, only dates *not* in daysOfWeek should be selectable
+              // and they must be within the immediate next week from the missed date.
+              const yesterdayDateObj = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+              const missedDate = new Date(yesterdayDateObj.getFullYear(), yesterdayDateObj.getMonth(), yesterdayDateObj.getDate());
+              
+              const nextWeekStart = new Date(missedDate);
+              nextWeekStart.setDate(missedDate.getDate() + 1);
+              
+              const nextWeekEnd = new Date(nextWeekStart);
+              nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
+
+              // Selectable if NOT an allotted day, NOT completed, NOT alternative completed, and within next week
+              isSelectable = !isAllottedDay && !isCompleted && !isAlternativeCompleted && (date >= nextWeekStart && date <= nextWeekEnd);
+            } else {
+              // For normal completion, it must be today, an allotted day, and not already completed
+              isSelectable = isToday && isAllottedDay && !isCompleted && !isAlternativeCompleted;
+            }
+
+            if (isCompleted || isAlternativeCompleted) {
               dayStyle = { backgroundColor: colors.success, borderColor: colors.success };
               textStyle = { color: colors.white, fontWeight: 'bold' };
             } else if (isSelectable) {
@@ -115,13 +137,22 @@ const Calendar: React.FC<CalendarProps> = ({ habit, onSelectDate, completedDates
           }
           // Monthly Habit Logic
           else if (habit.frequency === 'monthly') {
-            // Selectable if no completion yet, or if it's the already completed date
-            isSelectable = !firstCompletionDate || firstCompletionDate === dateISO;
+            if (isSettingAlternativeDate) {
+              // When setting alternative date, any date in the current month is selectable if not already completed
+              isSelectable = !isCompleted && date.getMonth() === currentMonth.getMonth() && date.getFullYear() === currentMonth.getFullYear();
+            } else {
+              // For normal completion, only today's date is selectable if not already completed for the month
+              isSelectable = isToday && !isCompleted && !firstCompletionDate;
+            }
             
             if (isCompleted) {
               dayStyle = { backgroundColor: colors.success, borderColor: colors.success };
               textStyle = { color: colors.white, fontWeight: 'bold' };
-            } else if (isSelectable && !isToday) { // No color boxes for unselected dates, unless it's today
+            } else if (isSelectable) {
+              dayStyle = { backgroundColor: habit.color, borderColor: habit.color };
+              textStyle = { color: colors.white, fontWeight: 'bold' };
+            } else if (date.getMonth() === currentMonth.getMonth() && date.getFullYear() === currentMonth.getFullYear()) {
+              // Highlight days in the current month even if not selectable for completion
               dayStyle = { borderColor: colors.borderLight, borderWidth: 1 };
               textStyle = { color: colors.text };
             }
@@ -129,13 +160,13 @@ const Calendar: React.FC<CalendarProps> = ({ habit, onSelectDate, completedDates
 
           return (
             <TouchableOpacity
-              key={dateISO}
+              key={dateLocalISO}
               style={[
                 styles.dayCell,
                 dayStyle,
               ]}
-              onPress={() => isSelectable && onSelectDate(dateISO)}
-              disabled={!isSelectable || isCompleted}
+              onPress={() => isSelectable && onSelectDate(dateLocalISO)}
+              disabled={!isSelectable} // Disable if not selectable
             >
               <Text style={[
                 styles.dayText,

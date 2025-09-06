@@ -12,6 +12,7 @@ export interface DatabaseHabit {
   color: string | null; // Added color field
   streak: number;
   best_streak: number;
+  alternative_completion_dates: string[] | null; // Added for weekly habits
   created_at: string;
   updated_at: string;
 }
@@ -42,6 +43,7 @@ const convertDbHabitToAppHabit = (
     streak: dbHabit.streak,
     bestStreak: dbHabit.best_streak,
     completedDates: [], // Will be populated separately
+    alternativeCompletionDates: dbHabit.alternative_completion_dates || undefined, // Populate alternative dates
     createdAt: dbHabit.created_at,
     updatedAt: dbHabit.updated_at,
   };
@@ -75,6 +77,7 @@ const convertAppHabitToDbHabit = (
     color: habit.color || null, // Include color
     streak: habit.streak || 0,
     best_streak: habit.bestStreak || 0,
+    alternative_completion_dates: habit.alternativeCompletionDates || null, // Include alternative completion dates
   };
 };
 
@@ -180,10 +183,10 @@ export class HabitDatabaseService {
 
       const appCompletions = completionsData?.map(convertDbCompletionToAppCompletion) || [];
       const habitCompletedDates = appCompletions
-        .filter(c => c.habitId === data.id && c.completed)
-        .map(c => c.date.split('T')[0]);
+          .filter(c => c.habitId === data.id && c.completed)
+          .map(c => c.date.split('T')[0]);
 
-      return { ...convertDbHabitToAppHabit(data), completedDates: habitCompletedDates };
+      return { ...convertDbHabitToAppHabit(data), completedDates: habitCompletedDates, alternativeCompletionDates: data.alternative_completion_dates || undefined };
     } catch (error) {
       console.error('Error updating habit:', error);
       throw error;
@@ -307,7 +310,7 @@ export class HabitDatabaseService {
         .filter(c => c.habitId === updatedHabit.id && c.completed)
         .map(c => c.date.split('T')[0]);
 
-      const habit = { ...convertDbHabitToAppHabit(updatedHabit), completedDates: habitCompletedDates };
+      const habit = { ...convertDbHabitToAppHabit(updatedHabit), completedDates: habitCompletedDates, alternativeCompletionDates: updatedHabit.alternative_completion_dates || undefined };
       
       const completion: HabitCompletion = convertDbCompletionToAppCompletion(completionData);
 

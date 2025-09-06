@@ -49,8 +49,9 @@ interface HabitState {
   getHabitCompletionsForDate: (date: string) => HabitCompletion[];
   getHabitById: (id: string) => Habit | undefined;
   getHabitsForDate: (date: string) => Habit[];
-  calculateStreak: (completedDates: string[]) => { currentStreak: number; bestStreak: number };
+  calculateStreak: (completedDates: string[], habitFrequency: 'daily' | 'weekly' | 'monthly') => { currentStreak: number; bestStreak: number };
   getYesterday: () => string;
+  setAlternativeCompletionDate: (habitId: string, newDate: string) => Promise<void>;
   
   // Offline support
   setOnlineStatus: (isOnline: boolean) => void;
@@ -259,8 +260,11 @@ export const useHabitStore = create<HabitState>()(
           const completedDatesForHabit = updatedCompletions
             .filter(c => c.habitId === habitId && c.completed)
             .map(c => c.date.split('T')[0]);
+          
+          // Include alternative completion dates in streak calculation
+          const allCompletionDates = [...completedDatesForHabit, ...(habitToUpdate.alternativeCompletionDates || [])];
 
-          const { currentStreak, bestStreak } = get().calculateStreak(completedDatesForHabit); // Use existing streak calculation
+          const { currentStreak, bestStreak } = get().calculateStreak(allCompletionDates, habitToUpdate.frequency); // Use existing streak calculation
 
           const updatedHabits = state.habits.map(h =>
             h.id === habitId
@@ -309,8 +313,11 @@ export const useHabitStore = create<HabitState>()(
               const completedDatesForOriginalHabit = originalCompletions
                 .filter(c => c.habitId === habitId && c.completed)
                 .map(c => c.date.split('T')[0]);
+              
+              // Include alternative completion dates in streak calculation for revert
+              const allOriginalCompletionDates = [...completedDatesForOriginalHabit, ...(originalHabit?.alternativeCompletionDates || [])];
 
-              const { currentStreak, bestStreak } = get().calculateStreak(completedDatesForOriginalHabit);
+              const { currentStreak, bestStreak } = get().calculateStreak(allOriginalCompletionDates, originalHabit!.frequency);
 
               const revertedHabits = state.habits.map(h =>
                 h.id === habitId
@@ -332,6 +339,33 @@ export const useHabitStore = create<HabitState>()(
         } else {
           // If offline, just use the offline toggle logic (which already updates local state)
           get().toggleHabitCompletionOffline(habitId, date, note);
+        }
+      },
+
+      // Set an alternative completion date for a weekly habit
+      setAlternativeCompletionDate: async (habitId, newDate) => {
+        const { isOnline, habits } = get();
+        const habit = habits.find(h => h.id === habitId);
+        if (!habit) return;
+
+        const updatedAlternativeDates = [...(habit.alternativeCompletionDates || []), newDate];
+
+        if (isOnline) {
+          try {
+            await get().updateHabit(habitId, { alternativeCompletionDates: updatedAlternativeDates });
+          } catch (error) {
+            console.error('Error setting alternative completion date online:', error);
+            Alert.alert("Error", "Failed to set alternative completion date. Please try again.");
+          }
+        } else {
+          // Offline update
+          set(state => ({
+            habits: state.habits.map(h =>
+              h.id === habitId
+                ? { ...h, alternativeCompletionDates: updatedAlternativeDates, updatedAt: new Date().toISOString() }
+                : h
+            ),
+          }));
         }
       },
 
@@ -373,8 +407,11 @@ export const useHabitStore = create<HabitState>()(
         const completedDates = newCompletions
           .filter((c) => c.habitId === habitId && c.completed)
           .map((c) => c.date.split("T")[0]);
+        
+        // Include alternative completion dates in streak calculation for offline mode
+        const allCompletionDates = [...completedDates, ...(habit.alternativeCompletionDates || [])];
 
-        const { currentStreak, bestStreak } = get().calculateStreak(completedDates);
+        const { currentStreak, bestStreak } = get().calculateStreak(allCompletionDates, habit.frequency);
 
         set({
           completions: newCompletions,
@@ -384,7 +421,7 @@ export const useHabitStore = create<HabitState>()(
                   ...h,
                   streak: currentStreak,
                   bestStreak,
-                  completedDates,
+                  completedDates, // Keep only actual completed dates here
                   updatedAt: new Date().toISOString(),
                 }
               : h
@@ -393,52 +430,103 @@ export const useHabitStore = create<HabitState>()(
       },
 
       // Helper function to calculate streak (moved from habitDatabase.ts for offline use)
-      calculateStreak: (completedDates: string[]): { currentStreak: number; bestStreak: number } => {
+      calculateStreak: (completedDates: string[], habitFrequency: 'daily' | 'weekly' | 'monthly'): { currentStreak: number; bestStreak: number } => {
         if (completedDates.length === 0) {
           return { currentStreak: 0, bestStreak: 0 };
         }
 
         const sortedDates = completedDates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
         const today = new Date().toISOString().split('T')[0];
+        const yesterday = get().getYesterday();
         
         let currentStreak = 0;
         let bestStreak = 0;
         let tempStreak = 0;
 
-        // Calculate current streak
-        if (sortedDates[0] === today || sortedDates[0] === get().getYesterday()) {
-          currentStreak = 1;
-          
+        if (habitFrequency === 'monthly') {
+          // For monthly habits, streak is based on consecutive months
+          const completedMonths = new Set(sortedDates.map(d => new Date(d).toISOString().substring(0, 7))); // YYYY-MM
+          const sortedMonths = Array.from(completedMonths).sort((a, b) => new Date(b + '-01').getTime() - new Date(a + '-01').getTime());
+
+          if (sortedMonths.length === 0) {
+            return { currentStreak: 0, bestStreak: 0 };
+          }
+
+          const currentMonth = today.substring(0, 7);
+          const previousMonth = new Date(new Date(today).setMonth(new Date(today).getMonth() - 1)).toISOString().substring(0, 7);
+
+          // Calculate current monthly streak
+          if (sortedMonths[0] === currentMonth || sortedMonths[0] === previousMonth) {
+            currentStreak = 1;
+            for (let i = 1; i < sortedMonths.length; i++) {
+              const monthDate = new Date(sortedMonths[i - 1] + '-01');
+              const prevMonthDate = new Date(sortedMonths[i] + '-01');
+              
+              // Check if the previous month is exactly one month before
+              monthDate.setMonth(monthDate.getMonth() - 1);
+              if (monthDate.toISOString().substring(0, 7) === prevMonthDate.toISOString().substring(0, 7)) {
+                currentStreak++;
+              } else {
+                break;
+              }
+            }
+          }
+
+          // Calculate best monthly streak
+          tempStreak = 1;
+          for (let i = 1; i < sortedMonths.length; i++) {
+            const monthDate = new Date(sortedMonths[i - 1] + '-01');
+            const prevMonthDate = new Date(sortedMonths[i] + '-01');
+            
+            monthDate.setMonth(monthDate.getMonth() - 1);
+            if (monthDate.toISOString().substring(0, 7) === prevMonthDate.toISOString().substring(0, 7)) {
+              tempStreak++;
+            } else {
+              bestStreak = Math.max(bestStreak, tempStreak);
+              tempStreak = 1;
+            }
+          }
+          bestStreak = Math.max(bestStreak, tempStreak, currentStreak);
+
+          return { currentStreak, bestStreak };
+
+        } else {
+          // Existing daily/weekly streak calculation
+          // Calculate current streak
+          if (sortedDates[0] === today || sortedDates[0] === yesterday) {
+            currentStreak = 1;
+            
+            for (let i = 1; i < sortedDates.length; i++) {
+              const currentDate = new Date(sortedDates[i - 1]);
+              const nextDate = new Date(sortedDates[i]);
+              const daysDifference = Math.floor((currentDate.getTime() - nextDate.getTime()) / (1000 * 60 * 60 * 24));
+              
+              if (daysDifference === 1) {
+                currentStreak++;
+              } else {
+                break;
+              }
+            }
+          }
+
+          // Calculate best streak
+          tempStreak = 1;
           for (let i = 1; i < sortedDates.length; i++) {
             const currentDate = new Date(sortedDates[i - 1]);
             const nextDate = new Date(sortedDates[i]);
             const daysDifference = Math.floor((currentDate.getTime() - nextDate.getTime()) / (1000 * 60 * 60 * 24));
             
             if (daysDifference === 1) {
-              currentStreak++;
+              tempStreak++;
             } else {
-              break;
+              bestStreak = Math.max(bestStreak, tempStreak);
+              tempStreak = 1;
             }
           }
-        }
+          bestStreak = Math.max(bestStreak, tempStreak, currentStreak);
 
-        // Calculate best streak
-        tempStreak = 1;
-        for (let i = 1; i < sortedDates.length; i++) {
-          const currentDate = new Date(sortedDates[i - 1]);
-          const nextDate = new Date(sortedDates[i]);
-          const daysDifference = Math.floor((currentDate.getTime() - nextDate.getTime()) / (1000 * 60 * 60 * 24));
-          
-          if (daysDifference === 1) {
-            tempStreak++;
-          } else {
-            bestStreak = Math.max(bestStreak, tempStreak);
-            tempStreak = 1;
-          }
+          return { currentStreak, bestStreak };
         }
-        bestStreak = Math.max(bestStreak, tempStreak, currentStreak);
-
-        return { currentStreak, bestStreak };
       },
 
       // Helper function to get yesterday's date (moved from habitDatabase.ts for offline use)
@@ -495,7 +583,8 @@ export const useHabitStore = create<HabitState>()(
           }
           if (
             habit.frequency === "monthly" &&
-            new Date(habit.createdAt).getDate() === dateObj.getDate()
+            dateObj.getMonth() === new Date(habit.createdAt).getMonth() &&
+            dateObj.getFullYear() === new Date(habit.createdAt).getFullYear()
           ) {
             return true;
           }

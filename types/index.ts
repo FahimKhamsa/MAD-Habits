@@ -11,6 +11,7 @@ export interface Habit {
   streak: number;
   bestStreak: number;
   completedDates: string[]; // ISO date strings
+  alternativeCompletionDates?: string[]; // Added for weekly habits to allow alternative completion dates
   createdAt: string;
   updatedAt: string;
 }

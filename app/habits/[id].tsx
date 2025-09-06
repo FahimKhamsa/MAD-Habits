@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react"; // Removed useEffect import
 import {
   View,
   Text,
@@ -10,26 +10,33 @@ import {
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useHabits } from "@/hooks/useHabits";
+import { useHabitWarnings } from "@/hooks/useHabitWarnings"; // Import useHabitWarnings
 import { colors } from "@/constants/colors";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import Calendar from "@/components/ui/Calendar"; // Import Calendar component
-import { formatDate } from "@/utils/helpers";
+import { formatDate, getTodayISO } from "@/utils/helpers"; // Removed getYesterdayISO, getFirstDayOfNextMonthISO imports
 
 export default function HabitDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { 
-    getHabitById, 
-    deleteHabit, 
-    toggleHabitCompletion, 
-    isLoading, 
+  const {
+    getHabitById,
+    deleteHabit,
+    toggleHabitCompletion,
+    setAlternativeCompletionDate, // Destructure setAlternativeCompletionDate
+    isLoading,
     isOnline,
-    isAuthenticated 
+    isAuthenticated
   } = useHabits();
 
+  const [isSettingAlternativeDate, setIsSettingAlternativeDate] = useState(false);
+
   const habit = getHabitById(id);
+
+  // Call the custom hook for habit warnings
+  useHabitWarnings(habit);
 
   if (!isAuthenticated) {
     return (
@@ -90,21 +97,13 @@ export default function HabitDetailScreen() {
   const handleToggleCompletion = async (date: string) => {
     try {
       await toggleHabitCompletion(id, date);
+      if (isSettingAlternativeDate) {
+        setIsSettingAlternativeDate(false); // Reset after successful alternative date selection
+      }
     } catch (error) {
       Alert.alert("Error", "Failed to update habit completion. Please try again.");
       console.error("Error toggling completion:", error);
     }
-  };
-
-  // Get last 7 days for history
-  const getLast7Days = () => {
-    const dates: string[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      dates.push(date.toISOString().split("T")[0]);
-    }
-    return dates;
   };
 
   return (
@@ -218,6 +217,7 @@ export default function HabitDetailScreen() {
           habit={habit}
           onSelectDate={handleToggleCompletion}
           completedDates={habit.completedDates}
+          isSettingAlternativeDate={isSettingAlternativeDate} // Pass the new prop
         />
       </Card>
 
