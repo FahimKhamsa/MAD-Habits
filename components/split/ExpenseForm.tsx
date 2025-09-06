@@ -72,9 +72,9 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({
   useEffect(() => {
     if (splitType === 'equal' && amount && group) {
       const equal = parseFloat(amount) / group.members.length
-      setSplits(
+      setSplits((prevSplits) =>
         group.members.map((m) => {
-          const prev = splits.find((s) => s.memberId === m.id)
+          const prev = prevSplits.find((s) => s.memberId === m.id)
           return {
             memberId: m.id,
             amount: Number.isFinite(equal) ? equal : 0,
@@ -83,7 +83,7 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({
         })
       )
     }
-  }, [amount, splitType, group, splits])
+  }, [amount, splitType, group])
 
   const validateForm = (): boolean => {
     const e: Record<string, string> = {}
