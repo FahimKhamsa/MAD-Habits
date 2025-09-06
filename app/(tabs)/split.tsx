@@ -1,29 +1,38 @@
-import React from "react";
+import React, { useEffect } from 'react'
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-} from "react-native";
-import { useRouter } from "expo-router";
-import { Feather } from "@expo/vector-icons";
-import { useSplitStore } from "@/store/splitStore";
-import { colors } from "@/constants/colors";
-import { GroupCard } from "@/components/split/GroupCard";
-import { Button } from "@/components/ui/Button";
+} from 'react-native'
+import { useRouter } from 'expo-router'
+import { Feather } from '@expo/vector-icons'
+import { useSplitStore } from '@/store/splitStore'
+import { colors } from '@/constants/colors'
+import { GroupCard } from '@/components/split/GroupCard'
+import { Button } from '@/components/ui/Button'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function SplitScreen() {
-  const router = useRouter();
-  const { groups } = useSplitStore();
+  const router = useRouter()
+  const { groups, loadGroupsFromDatabase } = useSplitStore()
+  const { user } = useAuth()
+
+  // Load groups from database when component mounts or user changes
+  useEffect(() => {
+    if (user) {
+      loadGroupsFromDatabase()
+    }
+  }, [user, loadGroupsFromDatabase])
 
   const navigateToGroupDetails = (groupId: string) => {
-    router.push(`/split/group/${groupId}`);
-  };
+    router.push(`/split/group/${groupId}`)
+  }
 
   const navigateToNewGroup = () => {
-    router.push("/split/new-group");
-  };
+    router.push('/split/new-group')
+  }
 
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
@@ -32,12 +41,12 @@ export default function SplitScreen() {
         Create a group to start splitting expenses with friends
       </Text>
       <Button
-        title="Create Your First Group"
+        title='Create Your First Group'
         onPress={navigateToNewGroup}
         style={styles.emptyButton}
       />
     </View>
-  );
+  )
 
   return (
     <View style={styles.container}>
@@ -70,11 +79,11 @@ export default function SplitScreen() {
           onPress={navigateToNewGroup}
           activeOpacity={0.8}
         >
-          <Feather name="plus" size={24} color="white" />
+          <Feather name='plus' size={24} color='white' />
         </TouchableOpacity>
       )}
     </View>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
@@ -88,7 +97,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: "700",
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -101,40 +110,40 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
     padding: 24,
   },
   emptyTitle: {
     fontSize: 20,
-    fontWeight: "600",
+    fontWeight: '600',
     color: colors.text,
     marginBottom: 8,
-    textAlign: "center",
+    textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: 16,
     color: colors.textSecondary,
-    textAlign: "center",
+    textAlign: 'center',
     marginBottom: 24,
   },
   emptyButton: {
-    width: "80%",
+    width: '80%',
   },
   fab: {
-    position: "absolute",
+    position: 'absolute',
     bottom: 24,
     right: 24,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: colors.primary,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
     elevation: 4,
-    shadowColor: "#000",
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
   },
-});
+})

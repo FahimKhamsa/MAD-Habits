@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/Button'
 import { useSplitStore } from '@/store/splitStore'
 import { supabase } from '@/lib/supabase'
 import { Feather } from '@expo/vector-icons'
+import { useAuth } from '@/contexts/AuthContext'
+import { getUserProfile } from '@/services/splitSync'
 
 interface GroupFormProps {
   group?: Group
@@ -31,6 +33,7 @@ type MemberDraft = {
 export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
   const router = useRouter()
   const { addGroup, updateGroup, addMember, removeMember } = useSplitStore()
+  const { user } = useAuth()
 
   const [name, setName] = useState(group?.name || '')
 
@@ -50,45 +53,77 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // ★ Hydrate current user’s email/name from profiles
+  // ★ Hydrate current user's email/name from profiles table
   useEffect(() => {
-    ;(async () => {
-      if (group) return
-      const { data: auth } = await supabase.auth.getUser()
-      const uid = auth.user?.id
-      if (!uid) return
+    if (group || !user) return
 
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('id, email, full_name')
-        .eq('id', uid)
-        .maybeSingle()
-      if (error || !profile) return
+    const hydrateCurrentUser = async () => {
+      try {
+        // First try to get name from profiles table
+        const profile = await getUserProfile(user.id)
+        const userEmail = user.email || ''
+        const userName =
+          profile?.full_name ||
+          user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          'You'
 
-      setMembers((prev) => {
-        const idx = prev.findIndex((m) => m.isCurrentUser)
-        if (idx === -1) {
-          return [
-            {
-              email: profile.email ?? '',
-              isCurrentUser: true,
-              name: profile.full_name ?? 'You',
-              userId: profile.id,
-            },
-            ...prev,
-          ]
-        }
-        const copy = [...prev]
-        copy[idx] = {
-          ...copy[idx],
-          email: profile.email ?? copy[idx].email,
-          name: profile.full_name ?? copy[idx].name ?? 'You',
-          userId: profile.id,
-        }
-        return copy
-      })
-    })()
-  }, [group])
+        setMembers((prev) => {
+          const idx = prev.findIndex((m) => m.isCurrentUser)
+          if (idx === -1) {
+            return [
+              {
+                email: userEmail,
+                isCurrentUser: true,
+                name: userName,
+                userId: user.id,
+              },
+              ...prev,
+            ]
+          }
+          const copy = [...prev]
+          copy[idx] = {
+            ...copy[idx],
+            email: userEmail,
+            name: userName,
+            userId: user.id,
+          }
+          return copy
+        })
+      } catch (error) {
+        console.error('Error fetching user profile:', error)
+        // Fallback to auth metadata
+        const userEmail = user.email || ''
+        const userName =
+          user.user_metadata?.full_name || user.user_metadata?.name || 'You'
+
+        setMembers((prev) => {
+          const idx = prev.findIndex((m) => m.isCurrentUser)
+          if (idx === -1) {
+            return [
+              {
+                email: userEmail,
+                isCurrentUser: true,
+                name: userName,
+                userId: user.id,
+              },
+              ...prev,
+            ]
+          }
+          const copy = [...prev]
+          copy[idx] = {
+            ...copy[idx],
+            email: userEmail,
+            name: userName,
+            userId: user.id,
+          }
+          return copy
+        })
+      }
+    }
+
+    hydrateCurrentUser()
+  }, [group, user])
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -97,8 +132,12 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
     const count = members.length
     if (count < 2) newErrors.members = 'Add at least one more member email'
 
-    // basic email check
+    // basic email check - skip current user if they don't have an email yet
     members.forEach((m, i) => {
+      if (m.isCurrentUser && !m.email) {
+        // Current user without email - this is OK, they'll be hydrated
+        return
+      }
       if (!m.email || !/^\S+@\S+\.\S+$/.test(m.email)) {
         newErrors[`member_${i}`] = 'Enter a valid email'
       }
@@ -112,16 +151,16 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
   const lookupProfileByEmail = async (email: string) => {
     // normalize/trim
     const value = email.trim().toLowerCase()
+
     const { data, error } = await supabase
       .from('profiles')
       .select('id, email, full_name')
       .eq('email', value)
       .maybeSingle()
 
-    console.log(data)
-
     if (error) {
       // Surface RLS or other failures
+      console.error('Profile lookup error:', error)
       throw new Error(error.message || 'Profile lookup failed')
     }
     return data // null if not found
@@ -130,7 +169,11 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
   // ★ Add a member by email (must exist in profiles)
   const addNewMember = async () => {
     const email = newMemberEmail.trim().toLowerCase()
-    if (!email) return
+
+    if (!email) {
+      return
+    }
+
     if (!/^\S+@\S+\.\S+$/.test(email)) {
       setErrors((e) => ({ ...e, addEmail: 'Enter a valid email' }))
       return
@@ -138,6 +181,7 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
 
     try {
       const profile = await lookupProfileByEmail(email)
+
       if (!profile) {
         Alert.alert('Not found', 'No user with this email exists.')
         return
@@ -184,21 +228,35 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
         // You could also update Supabase groups.name here if you want:
         // await supabase.from('groups').update({ name }).eq('id', <supa_group_id>)
       } else {
-        // 1) Create group in Supabase
-        const { data: auth } = await supabase.auth.getUser()
-        const creatorId = auth.user?.id ?? null
-        const { data: groupRow, error: groupErr } = await supabase
-          .from('groups')
-          .insert({ name, creator_id: creatorId })
-          .select('id')
-          .single()
-        if (groupErr || !groupRow)
-          throw groupErr || new Error('Group creation failed')
-
-        // 2) All members must exist in profiles (we already checked per-add, but re-validate here)
+        // 1) All members must exist in profiles (we already checked per-add, but re-validate here)
         //    Also fill in display names
         const resolvedMembers: MemberDraft[] = []
         for (const m of members) {
+          // Handle current user specially - they might not have an email yet
+          if (m.isCurrentUser && !m.email) {
+            // Get current user info from auth context
+            if (!user) {
+              throw new Error('Current user not authenticated')
+            }
+
+            const userEmail = user.email || ''
+            // Try to get name from profiles table first
+            const profile = await getUserProfile(user.id)
+            const userName =
+              profile?.full_name ||
+              user.user_metadata?.full_name ||
+              user.user_metadata?.name ||
+              'You'
+
+            resolvedMembers.push({
+              email: userEmail,
+              isCurrentUser: true,
+              name: userName,
+              userId: user.id,
+            })
+            continue
+          }
+
           // re-lookup if userId missing (e.g., someone typed current-user email manually)
           let userId = m.userId
           let dispName = m.name
@@ -218,28 +276,14 @@ export const GroupForm: React.FC<GroupFormProps> = ({ group, onComplete }) => {
           })
         }
 
-        // 3) Insert group_members
-        const supaMembersPayload = resolvedMembers.map((m) => ({
-          group_id: groupRow.id,
-          name: m.name ?? m.email,
-          email: m.email,
-          is_current_user: m.isCurrentUser ?? false,
-          user_id: m.userId, // ★ requires migration. If you DID NOT add the column, remove this line.
-        }))
-
-        const { error: gmErr } = await supabase
-          .from('group_members')
-          .insert(supaMembersPayload)
-        if (gmErr) throw gmErr
-
-        // 4) Add to local store (keeps your UI in sync)
+        // 2) Add to local store (this will also sync to database)
         //    We must map back to your local GroupMember shape (needs name)
         const localMembers = resolvedMembers.map((m) => ({
           name: m.name ?? m.email,
           email: m.email,
           isCurrentUser: !!m.isCurrentUser,
         }))
-        const localGroupId = addGroup(name, localMembers)
+        const localGroupId = await addGroup(name, localMembers)
 
         onComplete ? onComplete(localGroupId) : router.back()
       }

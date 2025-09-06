@@ -83,12 +83,7 @@ export const ExpenseCard: React.FC<ExpenseCardProps> = ({
           <View style={styles.titleContainer}>
             <Text style={styles.title}>{expense.description}</Text>
             <Text style={styles.subtitle}>
-              Paid by{' '}
-              {paidByMember
-                ? paidByMember.isCurrentUser
-                  ? 'You'
-                  : paidByMember.name
-                : 'Unknown'}
+              Paid by {paidByMember ? paidByMember.name : 'Unknown'}
             </Text>
           </View>
           <View style={styles.amountContainer}>
